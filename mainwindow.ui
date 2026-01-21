@@ -11,9 +11,64 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>Capybara</string>
   </property>
-  <widget class="QWidget" name="centralwidget"/>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QLabel" name="label">
+      <property name="text">
+       <string>選擇 Python 環境：</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QComboBox" name="pythonComboBox">
+      <property name="editable">
+       <bool>false</bool>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="pythonPathLabel">
+      <property name="text">
+       <string>路徑：未選擇</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="venvLabel">
+      <property name="text">
+       <string>選擇虛擬環境：</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QComboBox" name="venvComboBox">
+      <property name="editable">
+       <bool>false</bool>
+      </property>
+      <property name="enabled">
+       <bool>false</bool>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="venvPathLabel">
+      <property name="text">
+       <string>虛擬環境路徑：未選擇</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QPushButton" name="refreshButton">
+      <property name="text">
+       <string>重新掃描</string>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
     <rect>
