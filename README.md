@@ -2,6 +2,9 @@
 
 # Capybara
 
+Under development | In Entwicklung | En développement | 開発中 | 開發中
+
+
 ![Capybara Logo](icon/icon.png)
 
 **A unified GUI for vision model training, ONNX export, and cross-platform deployment.**
