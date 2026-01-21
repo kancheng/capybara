@@ -27,6 +27,7 @@
 #include <QSplitter>
 #include <QProgressDialog>
 #include <QProcess>
+#include <QTimer>
 #ifdef HAVE_OPENCV
 #include <opencv2/opencv.hpp>
 #endif
@@ -51,9 +52,38 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onRefreshButtonClicked);
     
     // 檢查並安裝 OpenCV / Check and install OpenCV
+#ifdef HAVE_OPENCV
+    // OpenCV is available at compile time, no need to check
+#else
+    // OpenCV was not compiled in, check if it's installed and offer to install
     if (!checkOpenCVInstalled()) {
-        installOpenCV();
+        QMessageBox::StandardButton reply = QMessageBox::question(this, 
+            "OpenCV Not Available",
+            "OpenCV is not available in this build.\n\n"
+            "This application was compiled without OpenCV support. "
+            "To use image processing features, you need to:\n\n"
+            "1. Install OpenCV (if not already installed)\n"
+            "2. Rebuild the application with OpenCV enabled\n\n"
+            "Would you like to install OpenCV now?\n"
+            "(You will still need to rebuild the application after installation)",
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::Yes);
+        
+        if (reply == QMessageBox::Yes) {
+            installOpenCV();
+        }
+    } else {
+        // OpenCV is installed but not compiled in
+        QMessageBox::information(this, 
+            "OpenCV Installed But Not Available",
+            "OpenCV is installed on your system, but this application was compiled without OpenCV support.\n\n"
+            "To use image processing features, please rebuild the application:\n\n"
+            "1. Run CMake configuration again\n"
+            "2. CMake should detect OpenCV automatically\n"
+            "3. Rebuild the application\n\n"
+            "Image processing features will be disabled until you rebuild.");
     }
+#endif
     
     // 掃描 Python 環境 / Scan Python environments
     scanPythonEnvironments();
@@ -2266,48 +2296,124 @@ void MainWindow::installOpenCV()
     progress.show();
     QApplication::processEvents();
     
-    // Run PowerShell script
+    // Run PowerShell script with better error handling
     QProcess process;
     process.setProcessChannelMode(QProcess::MergedChannels);
     
+    // Update progress message
+    progress.setLabelText("Starting installation...");
+    QApplication::processEvents();
+    
     QString powershell = "powershell.exe";
     QStringList arguments;
-    arguments << "-ExecutionPolicy" << "Bypass" << "-File" << QDir::toNativeSeparators(scriptPath);
+    arguments << "-ExecutionPolicy" << "Bypass" 
+             << "-NoProfile" 
+             << "-NonInteractive"
+             << "-File" << QDir::toNativeSeparators(scriptPath)
+             << "-NonInteractive";
+    
+    qDebug() << "Running PowerShell script:" << scriptPath;
+    qDebug() << "Command:" << powershell << arguments.join(" ");
     
     process.start(powershell, arguments);
     
-    if (!process.waitForStarted(3000)) {
+    if (!process.waitForStarted(5000)) {
         progress.close();
-        QMessageBox::critical(this, "Installation Failed",
-            "Failed to start installation script.");
+        QString errorMsg = QString("Failed to start installation script.\n\n"
+                                  "Script path: %1\n"
+                                  "Error: %2")
+                          .arg(scriptPath)
+                          .arg(process.errorString());
+        QMessageBox::critical(this, "Installation Failed", errorMsg);
         return;
     }
     
+    // Monitor process output and update progress
+    QByteArray allOutput;
+    QTimer updateTimer;
+    updateTimer.setInterval(100);
+    QObject::connect(&updateTimer, &QTimer::timeout, [&]() {
+        QApplication::processEvents();
+        QByteArray newData = process.readAllStandardOutput();
+        if (!newData.isEmpty()) {
+            allOutput += newData;
+            QString outputStr = QString::fromLocal8Bit(newData);
+            qDebug() << "Script output:" << outputStr.trimmed();
+            
+            // Update progress message based on output
+            if (outputStr.contains("Downloading", Qt::CaseInsensitive)) {
+                progress.setLabelText("Downloading OpenCV...");
+            } else if (outputStr.contains("Extracting", Qt::CaseInsensitive)) {
+                progress.setLabelText("Extracting OpenCV...");
+            } else if (outputStr.contains("Setting environment", Qt::CaseInsensitive)) {
+                progress.setLabelText("Setting environment variables...");
+            }
+        }
+    });
+    updateTimer.start();
+    
     // Wait for completion (with timeout)
     bool finished = process.waitForFinished(600000); // 10 minutes timeout
+    updateTimer.stop();
+    
+    // Read any remaining output
+    allOutput += process.readAllStandardOutput();
+    allOutput += process.readAllStandardError();
     
     progress.close();
+    
+    int exitCode = process.exitCode();
+    QString output = QString::fromLocal8Bit(allOutput);
+    
+    qDebug() << "Installation exit code:" << exitCode;
+    qDebug() << "Installation output:" << output;
     
     if (!finished) {
         QMessageBox::warning(this, "Installation Timeout",
             "Installation is taking longer than expected.\n"
-            "The installation may still be running in the background.\n"
-            "Please check the PowerShell window and restart the application after installation completes.");
+            "The installation may still be running in the background.\n\n"
+            "Please check the PowerShell window and restart the application after installation completes.\n\n"
+            "Output so far:\n" + output);
         return;
     }
     
-    int exitCode = process.exitCode();
-    QString output = process.readAllStandardOutput();
-    
     if (exitCode == 0) {
-        QMessageBox::information(this, "Installation Complete",
-            "OpenCV has been installed successfully!\n\n"
-            "Please restart the application to use OpenCV features.");
+        // Verify installation
+        QTimer::singleShot(1000, [this]() {
+            if (checkOpenCVInstalled()) {
+                QMessageBox::information(this, "Installation Complete",
+                    "OpenCV has been installed successfully!\n\n"
+                    "IMPORTANT: This application was compiled WITHOUT OpenCV support.\n\n"
+                    "To use OpenCV features, you MUST rebuild the application:\n\n"
+                    "1. Close this application\n"
+                    "2. Run CMake configuration (CMake should detect OpenCV automatically)\n"
+                    "3. Rebuild the application\n"
+                    "4. Restart the application\n\n"
+                    "Image processing features will remain disabled until you rebuild.");
+            } else {
+                QMessageBox::warning(this, "Installation May Have Failed",
+                    "OpenCV installation completed, but OpenCV was not detected.\n\n"
+                    "This may be because:\n"
+                    "1. The application needs to be restarted to detect the new environment variables\n"
+                    "2. The installation may have failed silently\n\n"
+                    "Please try:\n"
+                    "1. Restart the application and check again\n"
+                    "2. Or run the installation script manually: .\\install_opencv.ps1\n"
+                    "3. Then rebuild the application with CMake");
+            }
+        });
     } else {
-        QMessageBox::warning(this, "Installation Failed",
+        QString errorDetails = output;
+        if (errorDetails.length() > 500) {
+            errorDetails = errorDetails.left(500) + "\n... (truncated)";
+        }
+        
+        QMessageBox::critical(this, "Installation Failed",
             QString("OpenCV installation failed with exit code: %1\n\n"
-                   "Please try running the installation script manually:\n"
+                   "Please check the error messages below and try running the installation script manually:\n"
                    "  .\\install_opencv.ps1\n\n"
-                   "Error output:\n%2").arg(exitCode).arg(output));
+                   "Error output:\n%2")
+            .arg(exitCode)
+            .arg(errorDetails));
     }
 }

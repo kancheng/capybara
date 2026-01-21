@@ -32,7 +32,7 @@ ImageInfo ImageInfo::analyzeImage(const QString &path)
     info.channels = img.channels();
     info.depth = img.depth();
 #else
-    qDebug() << "OpenCV 未啟用，無法讀取圖像信息 / OpenCV not enabled, cannot read image info:" << path;
+    qDebug() << "OpenCV not enabled, cannot read image info:" << path;
 #endif
     
     return info;

@@ -4,7 +4,8 @@
 param(
     [string]$Version = "4.8.0",
     [string]$InstallPath = "$env:USERPROFILE\opencv",
-    [switch]$Force = $false
+    [switch]$Force = $false,
+    [switch]$NonInteractive = $false
 )
 
 Write-Host "========================================" -ForegroundColor Cyan
@@ -135,12 +136,25 @@ $buildPath = if (Test-Path "$extractPath\build") { "$extractPath\build" } else {
 Write-Host "Environment variable set: OpenCV_DIR = $buildPath" -ForegroundColor Green
 
 # Clean up download file (optional)
-Write-Host ""
-Write-Host "Delete download file? (Y/N): " -NoNewline -ForegroundColor Yellow
-$response = Read-Host
-if ($response -eq "Y" -or $response -eq "y") {
-    Remove-Item -Path $downloadPath -Force -ErrorAction SilentlyContinue
-    Write-Host "Download file deleted" -ForegroundColor Green
+# Skip interactive prompt if running non-interactively
+if (-not $NonInteractive -and [Environment]::UserInteractive) {
+    Write-Host ""
+    Write-Host "Delete download file? (Y/N): " -NoNewline -ForegroundColor Yellow
+    try {
+        $response = Read-Host
+        if ($response -eq "Y" -or $response -eq "y") {
+            Remove-Item -Path $downloadPath -Force -ErrorAction SilentlyContinue
+            Write-Host "Download file deleted" -ForegroundColor Green
+        }
+    } catch {
+        # If Read-Host fails (non-interactive), just keep the file
+        Write-Host ""
+        Write-Host "Download file kept at: $downloadPath" -ForegroundColor Gray
+    }
+} else {
+    # Non-interactive mode: keep the file
+    Write-Host ""
+    Write-Host "Download file kept at: $downloadPath" -ForegroundColor Gray
 }
 
 Write-Host ""
