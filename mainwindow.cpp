@@ -10,6 +10,7 @@
 #include <QTextStream>
 #include <QIODevice>
 #include <QRegularExpression>
+#include <QApplication>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -22,11 +23,16 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onPythonComboBoxChanged);
     connect(ui->venvComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onVenvComboBoxChanged);
+    connect(ui->selectEnvButton, &QPushButton::clicked,
+            this, &MainWindow::onSelectEnvButtonClicked);
     connect(ui->refreshButton, &QPushButton::clicked,
             this, &MainWindow::onRefreshButtonClicked);
     
     // 掃描 Python 環境 / Scan Python environments
     scanPythonEnvironments();
+    
+    // 檢測系統信息 / Detect system information
+    detectSystemInfo();
 }
 
 MainWindow::~MainWindow()
@@ -261,6 +267,16 @@ void MainWindow::onPythonComboBoxChanged(int index)
         
         // 掃描該 Python 環境的虛擬環境 / Scan virtual environments for this Python
         scanVirtualEnvironments(env.path);
+        
+        // 清除之前的選擇和檢測結果 / Clear previous selection and detection results
+        selectedEnvName.clear();
+        selectedEnvPath.clear();
+        selectedPythonPath.clear();
+        ui->selectedEnvLabel->setText("已指定環境：無");
+        ui->selectEnvButton->setEnabled(false);
+        ui->pythonPackagesLabel->setText("Python 套件：請選擇虛擬環境並點擊「指定此環境」");
+        ui->pytorchInfoLabel->setText("PyTorch：未檢測");
+        ui->ultralyticsInfoLabel->setText("Ultralytics：未檢測");
     } else {
         ui->pythonPathLabel->setText("路徑：未選擇");
         currentPythonPath.clear();
@@ -268,6 +284,11 @@ void MainWindow::onPythonComboBoxChanged(int index)
         ui->venvComboBox->clear();
         ui->venvComboBox->setEnabled(false);
         ui->venvPathLabel->setText("虛擬環境路徑：未選擇");
+        
+        // 清除 Python 套件信息 / Clear Python package information
+        ui->pythonPackagesLabel->setText("Python 套件：未選擇環境");
+        ui->pytorchInfoLabel->setText("PyTorch：未檢測");
+        ui->ultralyticsInfoLabel->setText("Ultralytics：未檢測");
     }
 }
 
@@ -624,24 +645,50 @@ bool MainWindow::isVirtualEnvironmentForPython(const QString &venvPath, const QS
 
 QString MainWindow::getVenvPythonPath(const QString &venvPath)
 {
-    // 檢查 Windows 下的 Scripts/python.exe / Check Scripts/python.exe on Windows
-    QString scriptsPython = QDir(venvPath).absoluteFilePath("Scripts/python.exe");
-    if (QFileInfo::exists(scriptsPython)) {
-        return scriptsPython;
+    qDebug() << "\n=== 查找 Python 路徑 ===";
+    qDebug() << "虛擬環境路徑:" << venvPath;
+    
+    // 檢查是否為 Conda 環境 / Check if it's a Conda environment
+    bool isConda = isCondaEnvironment(venvPath);
+    qDebug() << "是否為 Conda 環境:" << isConda;
+    
+    // Conda 環境的 Python 路徑檢查順序 / Conda environment Python path check order
+    QStringList condaPaths = {
+        QDir(venvPath).absoluteFilePath("python.exe"),  // Windows 根目錄 / Windows root
+        QDir(venvPath).absoluteFilePath("bin/python.exe"), // Windows bin 目錄 / Windows bin directory
+        QDir(venvPath).absoluteFilePath("bin/python"),    // Unix bin 目錄 / Unix bin directory
+    };
+    
+    // 標準虛擬環境的 Python 路徑檢查順序 / Standard virtual environment Python path check order
+    QStringList standardPaths = {
+        QDir(venvPath).absoluteFilePath("Scripts/python.exe"), // Windows Scripts / Windows Scripts
+        QDir(venvPath).absoluteFilePath("bin/python.exe"),     // Windows bin / Windows bin
+        QDir(venvPath).absoluteFilePath("bin/python"),         // Unix bin / Unix bin
+    };
+    
+    // 優先檢查 Conda 環境路徑 / Check Conda paths first if it's a Conda environment
+    QStringList pathsToCheck = isConda ? condaPaths : standardPaths;
+    
+    for (const QString &path : pathsToCheck) {
+        qDebug() << "檢查路徑:" << path;
+        if (QFileInfo::exists(path)) {
+            qDebug() << "找到 Python:" << path;
+            return path;
+        }
     }
     
-    // 檢查 Unix 風格下的 bin/python / Check bin/python in Unix style
-    QString binPython = QDir(venvPath).absoluteFilePath("bin/python");
-    if (QFileInfo::exists(binPython)) {
-        return binPython;
+    // 如果都沒找到，也檢查標準路徑 / If not found, also check standard paths
+    if (isConda) {
+        for (const QString &path : standardPaths) {
+            qDebug() << "檢查標準路徑:" << path;
+            if (QFileInfo::exists(path)) {
+                qDebug() << "找到 Python (標準路徑):" << path;
+                return path;
+            }
+        }
     }
     
-    // 檢查 bin/python.exe (某些 Windows 虛擬環境) / Check bin/python.exe (some Windows virtual environments)
-    QString binPythonExe = QDir(venvPath).absoluteFilePath("bin/python.exe");
-    if (QFileInfo::exists(binPythonExe)) {
-        return binPythonExe;
-    }
-    
+    qDebug() << "未找到 Python 可執行文件";
     return QString();
 }
 
@@ -653,12 +700,14 @@ void MainWindow::updateVenvComboBox()
         ui->venvComboBox->addItem("未找到虛擬環境");
         ui->venvComboBox->setEnabled(false);
         ui->venvPathLabel->setText("虛擬環境路徑：未找到");
+        ui->selectEnvButton->setEnabled(false);
     } else {
         ui->venvComboBox->setEnabled(true);
         for (const VirtualEnvironment &venv : virtualEnvironments) {
             ui->venvComboBox->addItem(venv.displayName);
         }
         ui->venvPathLabel->setText("虛擬環境路徑：" + virtualEnvironments[0].path);
+        ui->selectEnvButton->setEnabled(true);
     }
 }
 
@@ -667,7 +716,736 @@ void MainWindow::onVenvComboBoxChanged(int index)
     if (index >= 0 && index < virtualEnvironments.size()) {
         const VirtualEnvironment &venv = virtualEnvironments[index];
         ui->venvPathLabel->setText("虛擬環境路徑：" + venv.path);
+        
+        // 啟用"指定此環境"按鈕 / Enable "Select Environment" button
+        ui->selectEnvButton->setEnabled(true);
+        
+        // 清除之前的檢測結果 / Clear previous detection results
+        ui->pythonPackagesLabel->setText("Python 套件：請點擊「指定此環境」按鈕開始檢測");
+        ui->pytorchInfoLabel->setText("PyTorch：未檢測");
+        ui->ultralyticsInfoLabel->setText("Ultralytics：未檢測");
     } else {
         ui->venvPathLabel->setText("虛擬環境路徑：未選擇");
+        ui->selectEnvButton->setEnabled(false);
+        ui->pythonPackagesLabel->setText("Python 套件：請選擇環境");
+        ui->pytorchInfoLabel->setText("PyTorch：未檢測");
+        ui->ultralyticsInfoLabel->setText("Ultralytics：未檢測");
     }
+}
+
+void MainWindow::onSelectEnvButtonClicked()
+{
+    int index = ui->venvComboBox->currentIndex();
+    if (index >= 0 && index < virtualEnvironments.size()) {
+        const VirtualEnvironment &venv = virtualEnvironments[index];
+        
+        // 保存選擇的環境信息 / Save selected environment information
+        selectedEnvName = venv.name;
+        selectedEnvPath = venv.path;
+        
+        // 移除 [Conda] 前綴用於顯示 / Remove [Conda] prefix for display
+        QString displayName = selectedEnvName;
+        if (displayName.startsWith("[Conda] ")) {
+            displayName = displayName.mid(8);
+        }
+        
+        // 更新已指定環境標籤 / Update selected environment label
+        ui->selectedEnvLabel->setText(QString("已指定環境：%1").arg(displayName));
+        
+        // 獲取虛擬環境中的 Python 路徑 / Get Python path in virtual environment
+        QString venvPython = getVenvPythonPath(venv.path);
+        selectedPythonPath = venvPython;
+        
+        // 調試：顯示 Python 路徑 / Debug: display Python path
+        qDebug() << "=== 開始檢測環境 ===";
+        qDebug() << "環境名稱:" << displayName;
+        qDebug() << "環境路徑:" << venv.path;
+        qDebug() << "獲取的 Python 路徑:" << venvPython;
+        qDebug() << "Python 路徑是否存在:" << QFileInfo::exists(venvPython);
+        
+        // 如果獲取的路徑為空，嘗試其他方法 / If path is empty, try other methods
+        if (venvPython.isEmpty()) {
+            // 嘗試直接使用環境路徑下的 python.exe / Try python.exe directly in environment path
+            QString directPython = QDir(venv.path).absoluteFilePath("python.exe");
+            if (QFileInfo::exists(directPython)) {
+                venvPython = directPython;
+                qDebug() << "使用直接路徑:" << venvPython;
+            }
+        }
+        
+        if (!venvPython.isEmpty() && QFileInfo::exists(venvPython)) {
+            // 測試 Python 是否可用 / Test if Python is usable
+            QProcess testProcess;
+            
+            // 設置環境變數，清除可能干擾的 PYTHONHOME / Set environment variables, clear interfering PYTHONHOME
+            QProcessEnvironment testEnv = QProcessEnvironment::systemEnvironment();
+            testEnv.remove("PYTHONHOME"); // 清除 PYTHONHOME / Clear PYTHONHOME
+            testEnv.remove("PYTHONPATH"); // 清除 PYTHONPATH / Clear PYTHONPATH
+            testProcess.setProcessEnvironment(testEnv);
+            
+            testProcess.start(venvPython, QStringList() << "--version");
+            testProcess.waitForFinished(3000);
+            if (testProcess.exitCode() == 0) {
+                QString pythonVersion = QString::fromUtf8(testProcess.readAllStandardOutput()).trimmed();
+                qDebug() << "Python 版本測試成功:" << pythonVersion;
+            } else {
+                QString errorOutput = QString::fromUtf8(testProcess.readAllStandardError());
+                qDebug() << "Python 版本測試失敗，退出碼:" << testProcess.exitCode();
+                qDebug() << "錯誤輸出:" << errorOutput;
+            }
+            // 再次判斷是否為 Conda 環境 / Check again if it's a Conda environment
+            bool isConda = isCondaEnvironment(venv.path);
+            bool isPythonConda = isPythonFromConda(venvPython);
+            
+            // 顯示選擇的環境名稱和開始檢測 / Display selected environment name and start detection
+            if (isConda || isPythonConda) {
+                ui->pythonPackagesLabel->setText(QString("Python 套件：%1 (Conda 環境) - 檢測中...").arg(displayName));
+            } else {
+                ui->pythonPackagesLabel->setText(QString("Python 套件：%1 - 檢測中...").arg(displayName));
+            }
+            
+            // 立即更新 UI，然後開始檢測 / Update UI immediately, then start detection
+            QApplication::processEvents();
+            
+            // 開始檢測 Python 套件 / Start detecting Python packages
+            detectPythonPackages(venvPython);
+        } else {
+            QString errorMsg = venvPython.isEmpty() ? "無法找到 Python 可執行文件" : QString("Python 路徑不存在：%1").arg(venvPython);
+            ui->pythonPackagesLabel->setText(QString("Python 套件：%1 - %2").arg(displayName, errorMsg));
+            ui->pytorchInfoLabel->setText("PyTorch：未檢測");
+            ui->ultralyticsInfoLabel->setText("Ultralytics：未檢測");
+        }
+    }
+}
+
+// 系統檢測方法實現 / System detection method implementations
+void MainWindow::detectSystemInfo()
+{
+    QString arch = detectSystemArchitecture();
+    QString cuda = detectCUDA();
+    QString gpu = detectGPU();
+    
+    ui->systemInfoLabel->setText(QString("系統架構：%1").arg(arch));
+    ui->cudaInfoLabel->setText(QString("CUDA：%1").arg(cuda));
+    ui->gpuInfoLabel->setText(QString("GPU：%1").arg(gpu));
+}
+
+QString MainWindow::detectSystemArchitecture()
+{
+    // 檢測系統架構 / Detect system architecture
+    #ifdef Q_PROCESSOR_X86_64
+        return "x64 (64-bit)";
+    #elif defined(Q_PROCESSOR_X86_32)
+        return "x86 (32-bit)";
+    #elif defined(Q_PROCESSOR_ARM_64)
+        return "ARM64";
+    #elif defined(Q_PROCESSOR_ARM)
+        return "ARM";
+    #else
+        return "未知 / Unknown";
+    #endif
+}
+
+QString MainWindow::detectCUDA()
+{
+    QStringList cudaPaths = {
+        "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA",
+        "C:/Program Files (x86)/NVIDIA GPU Computing Toolkit/CUDA",
+    };
+    
+    // 查找 CUDA 安裝目錄 / Find CUDA installation directory
+    QStringList cudaVersions;
+    for (const QString &basePath : cudaPaths) {
+        QDir cudaDir(basePath);
+        if (cudaDir.exists()) {
+            QStringList entries = cudaDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+            for (const QString &entry : entries) {
+                // 檢查是否為版本目錄（例如 v11.8, v12.0） / Check if it's a version directory
+                QRegularExpression versionRe("^v?\\d+\\.\\d+");
+                if (versionRe.match(entry).hasMatch()) {
+                    QString version = entry;
+                    if (version.startsWith("v")) {
+                        version = version.mid(1);
+                    }
+                    cudaVersions.append(version);
+                }
+            }
+        }
+    }
+    
+    // 使用 nvidia-smi 檢測 CUDA 版本 / Use nvidia-smi to detect CUDA version
+    QProcess process;
+    process.start("nvidia-smi", QStringList() << "--query-gpu=driver_version,cuda_version" << "--format=csv,noheader");
+    process.waitForFinished(3000);
+    
+    if (process.exitCode() == 0) {
+        QString output = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+        if (!output.isEmpty()) {
+            QStringList parts = output.split(',');
+            if (parts.size() >= 2) {
+                QString cudaVersion = parts[1].trimmed();
+                if (!cudaVersion.isEmpty() && cudaVersion != "Not Supported") {
+                    return QString("已安裝 (驅動版本: %1, CUDA: %2)").arg(parts[0].trimmed(), cudaVersion);
+                }
+            }
+        }
+    }
+    
+    // 如果找到 CUDA 目錄但 nvidia-smi 失敗 / If CUDA directory found but nvidia-smi failed
+    if (!cudaVersions.isEmpty()) {
+        cudaVersions.sort();
+        return QString("已安裝 (版本: %1)").arg(cudaVersions.last());
+    }
+    
+    return "未安裝 / Not installed";
+}
+
+QString MainWindow::detectGPU()
+{
+    // 使用 nvidia-smi 檢測 GPU / Use nvidia-smi to detect GPU
+    QProcess process;
+    process.start("nvidia-smi", QStringList() << "--query-gpu=name" << "--format=csv,noheader");
+    process.waitForFinished(3000);
+    
+    if (process.exitCode() == 0) {
+        QString output = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+        if (!output.isEmpty()) {
+            QStringList gpus = output.split('\n', Qt::SkipEmptyParts);
+            if (!gpus.isEmpty()) {
+                QString gpuList = gpus.join(", ");
+                return QString("可用 (%1)").arg(gpuList);
+            }
+        }
+    }
+    
+    // 嘗試使用 wmic 檢測 GPU (Windows) / Try using wmic to detect GPU (Windows)
+    process.start("wmic", QStringList() << "path" << "win32_VideoController" << "get" << "name");
+    process.waitForFinished(3000);
+    
+    if (process.exitCode() == 0) {
+        QString output = QString::fromUtf8(process.readAllStandardOutput());
+        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+        QStringList gpus;
+        for (const QString &line : lines) {
+            QString trimmed = line.trimmed();
+            if (!trimmed.isEmpty() && trimmed != "Name" && !trimmed.contains("VideoController")) {
+                gpus.append(trimmed);
+            }
+        }
+        if (!gpus.isEmpty()) {
+            QString gpuList = gpus.join(", ");
+            // 檢查是否為 NVIDIA GPU / Check if it's NVIDIA GPU
+            bool hasNvidia = false;
+            for (const QString &gpu : gpus) {
+                if (gpu.contains("NVIDIA", Qt::CaseInsensitive)) {
+                    hasNvidia = true;
+                    break;
+                }
+            }
+            if (hasNvidia) {
+                return QString("可用 (%1)").arg(gpuList);
+            } else {
+                return QString("僅 CPU (%1)").arg(gpuList);
+            }
+        }
+    }
+    
+    return "僅 CPU / CPU only";
+}
+
+// Python 套件檢測方法實現 / Python package detection method implementations
+void MainWindow::detectPythonPackages(const QString &pythonPath)
+{
+    // 更新狀態標籤 / Update status labels
+    ui->pytorchInfoLabel->setText("PyTorch：檢測中...");
+    ui->ultralyticsInfoLabel->setText("Ultralytics：檢測中...");
+    
+    // 處理 UI 事件，確保標籤更新 / Process UI events to ensure labels are updated
+    QApplication::processEvents();
+    
+    // 檢測 PyTorch / Detect PyTorch
+    QString pytorchInfo = checkPyTorch(pythonPath);
+    ui->pytorchInfoLabel->setText(QString("PyTorch：%1").arg(pytorchInfo));
+    QApplication::processEvents();
+    
+    // 檢測 Ultralytics / Detect Ultralytics
+    QString ultralyticsInfo = checkUltralytics(pythonPath);
+    ui->ultralyticsInfoLabel->setText(QString("Ultralytics：%1").arg(ultralyticsInfo));
+    
+    // 更新 Python 套件標籤，移除"檢測中"狀態 / Update Python packages label, remove "detecting" status
+    QString currentLabel = ui->pythonPackagesLabel->text();
+    if (currentLabel.contains("檢測中")) {
+        currentLabel.replace(" - 檢測中...", "");
+        ui->pythonPackagesLabel->setText(currentLabel);
+    }
+    
+    QApplication::processEvents();
+}
+
+QString MainWindow::checkPyTorch(const QString &pythonPath)
+{
+    qDebug() << "\n=== PyTorch 檢測開始 ===";
+    qDebug() << "Python 路徑:" << pythonPath;
+    
+    // 首先驗證 Python 路徑是否存在 / First verify Python path exists
+    if (!QFileInfo::exists(pythonPath)) {
+        qDebug() << "錯誤：Python 路徑不存在:" << pythonPath;
+        return QString("未安裝（Python 路徑不存在：%1）").arg(pythonPath);
+    }
+    
+    // 測試 Python 是否可執行 / Test if Python is executable
+    QProcess testProcess;
+    testProcess.start(pythonPath, QStringList() << "--version");
+    if (!testProcess.waitForFinished(3000)) {
+        qDebug() << "錯誤：Python 無法執行";
+        return "未安裝（Python 無法執行）";
+    }
+    QString pythonVersion = QString::fromUtf8(testProcess.readAllStandardOutput()).trimmed();
+    qDebug() << "Python 版本:" << pythonVersion;
+    
+    // 使用 pip show 檢查 PyTorch / Use pip show to check PyTorch
+    qDebug() << "執行: pip show torch";
+    QProcess process;
+    QFileInfo pythonInfo(pythonPath);
+    QString workDir = pythonInfo.absolutePath();
+    process.setWorkingDirectory(workDir);
+    qDebug() << "工作目錄:" << workDir;
+    
+    // 設置環境變數，清除可能干擾的 PYTHONHOME / Set environment variables, clear interfering PYTHONHOME
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.remove("PYTHONHOME"); // 移除可能干擾的 PYTHONHOME / Remove interfering PYTHONHOME
+    env.remove("PYTHONPATH"); // 移除可能干擾的 PYTHONPATH / Remove interfering PYTHONPATH
+    process.setProcessEnvironment(env);
+    
+    QStringList args;
+    args << "-m" << "pip" << "show" << "torch";
+    qDebug() << "命令參數:" << args;
+    process.start(pythonPath, args);
+    
+    // 等待完成，增加超時時間 / Wait for completion, increase timeout
+    if (!process.waitForFinished(15000)) {
+        process.kill();
+        process.waitForFinished(1000);
+        qDebug() << "PyTorch check: pip show timeout";
+        // 繼續嘗試 pip list / Continue to try pip list
+    } else {
+        QString output = QString::fromUtf8(process.readAllStandardOutput());
+        QString errorOutput = QString::fromUtf8(process.readAllStandardError());
+        
+        qDebug() << "PyTorch check: pip show exit code:" << process.exitCode();
+        qDebug() << "PyTorch check: pip show output:" << output.left(200);
+        if (!errorOutput.isEmpty()) {
+            qDebug() << "PyTorch check: pip show error:" << errorOutput;
+        }
+        
+        // 檢查退出碼和輸出 / Check exit code and output
+        if (process.exitCode() == 0 && !output.isEmpty()) {
+            QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+            
+            QString version;
+            QString location;
+            
+            for (const QString &line : lines) {
+                if (line.startsWith("Version:")) {
+                    version = line.mid(8).trimmed();
+                } else if (line.startsWith("Location:")) {
+                    location = line.mid(10).trimmed();
+                }
+            }
+            
+            if (!version.isEmpty()) {
+                // 檢查是否為 CUDA 版本 / Check if it's CUDA version
+                QString cudaInfo = "";
+                QProcess torchProcess;
+                
+                // 設置環境變數，清除可能干擾的 PYTHONHOME / Set environment variables, clear interfering PYTHONHOME
+                QProcessEnvironment torchEnv = QProcessEnvironment::systemEnvironment();
+                torchEnv.remove("PYTHONHOME");
+                torchEnv.remove("PYTHONPATH");
+                torchProcess.setProcessEnvironment(torchEnv);
+                
+                torchProcess.start(pythonPath, QStringList() << "-c" << "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.version.cuda if torch.cuda.is_available() else 'N/A')");
+                torchProcess.waitForFinished(5000);
+                
+                if (torchProcess.exitCode() == 0) {
+                    QString torchOutput = QString::fromUtf8(torchProcess.readAllStandardOutput()).trimmed();
+                    QStringList torchLines = torchOutput.split('\n', Qt::SkipEmptyParts);
+                    if (torchLines.size() >= 2) {
+                        bool cudaAvailable = torchLines[1].trimmed() == "True";
+                        if (cudaAvailable && torchLines.size() >= 3) {
+                            QString cudaVersion = torchLines[2].trimmed();
+                            cudaInfo = QString(" (CUDA: %1)").arg(cudaVersion);
+                        } else {
+                            cudaInfo = " (CPU only)";
+                        }
+                    }
+                }
+                
+                return QString("已安裝 %1%2").arg(version, cudaInfo);
+            }
+        }
+    }
+    
+    // 如果 pip show 失敗，嘗試使用 pip list / If pip show fails, try pip list
+    qDebug() << "\n嘗試使用 pip list 作為備用方法 / Trying pip list as fallback";
+    QProcess listProcess;
+    listProcess.setWorkingDirectory(workDir);
+    
+    // 設置環境變數，清除可能干擾的 PYTHONHOME / Set environment variables, clear interfering PYTHONHOME
+    QProcessEnvironment listEnv = QProcessEnvironment::systemEnvironment();
+    listEnv.remove("PYTHONHOME"); // 移除可能干擾的 PYTHONHOME / Remove interfering PYTHONHOME
+    listEnv.remove("PYTHONPATH"); // 移除可能干擾的 PYTHONPATH / Remove interfering PYTHONPATH
+    listProcess.setProcessEnvironment(listEnv);
+    
+    QStringList listArgs;
+    listArgs << "-m" << "pip" << "list";
+    qDebug() << "執行命令:" << pythonPath << listArgs;
+    listProcess.start(pythonPath, listArgs);
+    
+    bool listFinished = listProcess.waitForFinished(20000); // 增加超時時間 / Increase timeout
+    qDebug() << "pip list 完成:" << listFinished;
+    qDebug() << "pip list 退出碼:" << listProcess.exitCode();
+    
+    if (listFinished) {
+        QString listOutput = QString::fromUtf8(listProcess.readAllStandardOutput());
+        QString listError = QString::fromUtf8(listProcess.readAllStandardError());
+        
+        qDebug() << "pip list 輸出長度:" << listOutput.length();
+        qDebug() << "pip list 錯誤輸出:" << listError;
+        
+        if (listProcess.exitCode() == 0 && !listOutput.isEmpty()) {
+            // 保存完整輸出到文件以便調試 / Save full output to file for debugging
+            qDebug() << "pip list 輸出前1000字符:" << listOutput.left(1000);
+            
+            QStringList lines = listOutput.split('\n', Qt::SkipEmptyParts);
+            qDebug() << "總行數:" << lines.size();
+            
+            // 查找 torch 行 / Find torch line
+            bool foundTorch = false;
+            for (int i = 0; i < lines.size(); ++i) {
+                const QString &line = lines[i];
+                QString trimmed = line.trimmed();
+                
+                // 跳過標題行 / Skip header lines
+                if (trimmed.startsWith("Package") || trimmed.startsWith("---") || trimmed.isEmpty()) {
+                    continue;
+                }
+                
+                // 檢查是否為 torch 行（不是 torchaudio 或 torchvision）/ Check if it's torch line (not torchaudio or torchvision)
+                if (trimmed.startsWith("torch", Qt::CaseInsensitive) && 
+                    !trimmed.startsWith("torchaudio", Qt::CaseInsensitive) && 
+                    !trimmed.startsWith("torchvision", Qt::CaseInsensitive)) {
+                    qDebug() << "找到 torch 行 (第" << i << "行):" << trimmed;
+                    foundTorch = true;
+                    
+                    // 解析版本 / Parse version - 使用多種方法
+                    QString version;
+                    
+                    // 方法1: 按空格分割 / Method 1: Split by spaces
+                    QStringList parts = trimmed.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+                    qDebug() << "分割結果，部分數:" << parts.size();
+                    for (int j = 0; j < parts.size(); ++j) {
+                        qDebug() << "  部分" << j << ":" << parts[j];
+                    }
+                    
+                    if (parts.size() >= 2) {
+                        version = parts[1];
+                        qDebug() << "提取的版本:" << version;
+                        
+                        // 檢查 CUDA 版本 / Check CUDA version
+                        QString cudaInfo = "";
+                        if (version.contains("cu")) {
+                            QRegularExpression cuRe("cu(\\d+)");
+                            QRegularExpressionMatch match = cuRe.match(version);
+                            if (match.hasMatch()) {
+                                cudaInfo = QString(" (CUDA: %1)").arg(match.captured(1));
+                            }
+                        }
+                        QString result = QString("已安裝 %1%2").arg(version, cudaInfo);
+                        qDebug() << "=== PyTorch 檢測結果:" << result << "===";
+                        return result;
+                    }
+                    
+                    // 如果分割失敗，嘗試正則表達式 / If split fails, try regex
+                    QRegularExpression versionRe("torch\\s+(\\S+)");
+                    QRegularExpressionMatch match = versionRe.match(trimmed);
+                    if (match.hasMatch()) {
+                        version = match.captured(1);
+                        qDebug() << "正則提取的版本:" << version;
+                        QString result = QString("已安裝 %1").arg(version);
+                        qDebug() << "=== PyTorch 檢測結果:" << result << "===";
+                        return result;
+                    }
+                    
+                    qDebug() << "無法解析版本，但找到 torch 行";
+                    return "已安裝（版本未知）";
+                }
+            }
+            
+            if (!foundTorch) {
+                qDebug() << "在 pip list 中未找到 torch";
+                // 輸出前20行以便調試 / Output first 20 lines for debugging
+                qDebug() << "前20行內容:";
+                for (int i = 0; i < qMin(20, lines.size()); ++i) {
+                    qDebug() << "  行" << i << ":" << lines[i];
+                }
+            }
+        } else {
+            qDebug() << "pip list 執行失敗，退出碼:" << listProcess.exitCode();
+            qDebug() << "錯誤輸出:" << listError;
+        }
+    } else {
+        qDebug() << "pip list 超時";
+    }
+    
+    qDebug() << "=== PyTorch 檢測結果: 未安裝 ===";
+    return "未安裝 / Not installed";
+}
+
+QString MainWindow::checkUltralytics(const QString &pythonPath)
+{
+    qDebug() << "\n=== Ultralytics 檢測開始 ===";
+    qDebug() << "Python 路徑:" << pythonPath;
+    
+    // 首先驗證 Python 路徑是否存在 / First verify Python path exists
+    if (!QFileInfo::exists(pythonPath)) {
+        qDebug() << "錯誤：Python 路徑不存在:" << pythonPath;
+        return QString("未安裝（Python 路徑不存在：%1）").arg(pythonPath);
+    }
+    
+    // 使用 pip show 檢查 ultralytics / Use pip show to check ultralytics
+    qDebug() << "執行: pip show ultralytics";
+    QProcess process;
+    QFileInfo pythonInfo(pythonPath);
+    QString workDir = pythonInfo.absolutePath();
+    process.setWorkingDirectory(workDir);
+    qDebug() << "工作目錄:" << workDir;
+    
+    // 設置環境變數，清除可能干擾的 PYTHONHOME / Set environment variables, clear interfering PYTHONHOME
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.remove("PYTHONHOME"); // 移除可能干擾的 PYTHONHOME / Remove interfering PYTHONHOME
+    env.remove("PYTHONPATH"); // 移除可能干擾的 PYTHONPATH / Remove interfering PYTHONPATH
+    process.setProcessEnvironment(env);
+    
+    QStringList args;
+    args << "-m" << "pip" << "show" << "ultralytics";
+    qDebug() << "命令參數:" << args;
+    process.start(pythonPath, args);
+    
+    // 等待完成，增加超時時間 / Wait for completion, increase timeout
+    if (!process.waitForFinished(15000)) {
+        process.kill();
+        process.waitForFinished(1000);
+        qDebug() << "Ultralytics check: pip show timeout";
+        // 繼續嘗試 pip list / Continue to try pip list
+    } else {
+        QString output = QString::fromUtf8(process.readAllStandardOutput());
+        QString errorOutput = QString::fromUtf8(process.readAllStandardError());
+        
+        qDebug() << "Ultralytics check: pip show exit code:" << process.exitCode();
+        qDebug() << "Ultralytics check: pip show output:" << output.left(200);
+        if (!errorOutput.isEmpty()) {
+            qDebug() << "Ultralytics check: pip show error:" << errorOutput;
+        }
+        
+        // 檢查退出碼和輸出 / Check exit code and output
+        if (process.exitCode() == 0 && !output.isEmpty()) {
+            QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+            
+            QString version;
+            
+            for (const QString &line : lines) {
+                if (line.startsWith("Version:")) {
+                    version = line.mid(8).trimmed();
+                    break;
+                }
+            }
+            
+            if (!version.isEmpty()) {
+                // 檢查 ultralytics-thop / Check ultralytics-thop
+                QString thopVersion = "";
+                QProcess thopProcess;
+                thopProcess.setWorkingDirectory(QFileInfo(pythonPath).absolutePath());
+                
+                // 設置環境變數，清除可能干擾的 PYTHONHOME / Set environment variables, clear interfering PYTHONHOME
+                QProcessEnvironment thopEnv = QProcessEnvironment::systemEnvironment();
+                thopEnv.remove("PYTHONHOME");
+                thopEnv.remove("PYTHONPATH");
+                thopProcess.setProcessEnvironment(thopEnv);
+                
+                thopProcess.start(pythonPath, QStringList() << "-m" << "pip" << "show" << "ultralytics-thop");
+                thopProcess.waitForFinished(5000);
+                
+                if (thopProcess.exitCode() == 0) {
+                    QString thopOutput = QString::fromUtf8(thopProcess.readAllStandardOutput());
+                    QStringList thopLines = thopOutput.split('\n', Qt::SkipEmptyParts);
+                    for (const QString &line : thopLines) {
+                        if (line.startsWith("Version:")) {
+                            thopVersion = line.mid(8).trimmed();
+                            break;
+                        }
+                    }
+                }
+                
+                if (!thopVersion.isEmpty()) {
+                    return QString("已安裝 %1 (thop: %2)").arg(version, thopVersion);
+                } else {
+                    return QString("已安裝 %1").arg(version);
+                }
+            }
+        }
+    }
+    
+    // 如果 pip show 失敗，嘗試使用 pip list / If pip show fails, try pip list
+    qDebug() << "\n嘗試使用 pip list 作為備用方法 / Trying pip list as fallback";
+    QProcess listProcess;
+    listProcess.setWorkingDirectory(workDir);
+    
+    // 設置環境變數，清除可能干擾的 PYTHONHOME / Set environment variables, clear interfering PYTHONHOME
+    QProcessEnvironment listEnv = QProcessEnvironment::systemEnvironment();
+    listEnv.remove("PYTHONHOME"); // 移除可能干擾的 PYTHONHOME / Remove interfering PYTHONHOME
+    listEnv.remove("PYTHONPATH"); // 移除可能干擾的 PYTHONPATH / Remove interfering PYTHONPATH
+    listProcess.setProcessEnvironment(listEnv);
+    
+    QStringList listArgs;
+    listArgs << "-m" << "pip" << "list";
+    qDebug() << "執行命令:" << pythonPath << listArgs;
+    listProcess.start(pythonPath, listArgs);
+    
+    bool listFinished = listProcess.waitForFinished(20000); // 增加超時時間 / Increase timeout
+    qDebug() << "pip list 完成:" << listFinished;
+    qDebug() << "pip list 退出碼:" << listProcess.exitCode();
+    
+    if (listFinished) {
+        QString listOutput = QString::fromUtf8(listProcess.readAllStandardOutput());
+        QString listError = QString::fromUtf8(listProcess.readAllStandardError());
+        
+        qDebug() << "pip list 輸出長度:" << listOutput.length();
+        qDebug() << "pip list 錯誤輸出:" << listError;
+        
+        if (listProcess.exitCode() == 0 && !listOutput.isEmpty()) {
+            qDebug() << "pip list 輸出前1000字符:" << listOutput.left(1000);
+            
+            QStringList lines = listOutput.split('\n', Qt::SkipEmptyParts);
+            qDebug() << "總行數:" << lines.size();
+            
+            QString ultralyticsVersion;
+            QString thopVersion;
+            
+            // 查找 ultralytics 和 ultralytics-thop 行 / Find ultralytics and ultralytics-thop lines
+            for (int i = 0; i < lines.size(); ++i) {
+                const QString &line = lines[i];
+                QString trimmed = line.trimmed();
+                
+                // 跳過標題行 / Skip header lines
+                if (trimmed.startsWith("Package") || trimmed.startsWith("---") || trimmed.isEmpty()) {
+                    continue;
+                }
+                
+                if (trimmed.startsWith("ultralytics", Qt::CaseInsensitive) && !trimmed.startsWith("ultralytics-thop", Qt::CaseInsensitive)) {
+                    qDebug() << "找到 ultralytics 行 (第" << i << "行):" << trimmed;
+                    QStringList parts = trimmed.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+                    qDebug() << "分割結果，部分數:" << parts.size();
+                    for (int j = 0; j < parts.size(); ++j) {
+                        qDebug() << "  部分" << j << ":" << parts[j];
+                    }
+                    if (parts.size() >= 2) {
+                        ultralyticsVersion = parts[1];
+                        qDebug() << "提取的 ultralytics 版本:" << ultralyticsVersion;
+                    }
+                } else if (trimmed.startsWith("ultralytics-thop", Qt::CaseInsensitive)) {
+                    qDebug() << "找到 ultralytics-thop 行 (第" << i << "行):" << trimmed;
+                    QStringList parts = trimmed.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+                    qDebug() << "thop 分割結果，部分數:" << parts.size();
+                    for (int j = 0; j < parts.size(); ++j) {
+                        qDebug() << "  部分" << j << ":" << parts[j];
+                    }
+                    if (parts.size() >= 2) {
+                        thopVersion = parts[1];
+                        qDebug() << "提取的 thop 版本:" << thopVersion;
+                    }
+                }
+            }
+            
+            if (!ultralyticsVersion.isEmpty()) {
+                QString result;
+                if (!thopVersion.isEmpty()) {
+                    result = QString("已安裝 %1 (thop: %2)").arg(ultralyticsVersion, thopVersion);
+                } else {
+                    result = QString("已安裝 %1").arg(ultralyticsVersion);
+                }
+                qDebug() << "=== Ultralytics 檢測結果:" << result << "===";
+                return result;
+            } else {
+                qDebug() << "在 pip list 中未找到 ultralytics";
+                // 輸出前20行以便調試 / Output first 20 lines for debugging
+                qDebug() << "前20行內容:";
+                for (int i = 0; i < qMin(20, lines.size()); ++i) {
+                    qDebug() << "  行" << i << ":" << lines[i];
+                }
+            }
+        } else {
+            qDebug() << "pip list 執行失敗，退出碼:" << listProcess.exitCode();
+            qDebug() << "錯誤輸出:" << listError;
+        }
+    } else {
+        qDebug() << "pip list 超時";
+    }
+    
+    qDebug() << "=== Ultralytics 檢測結果: 未安裝 ===";
+    return "未安裝 / Not installed";
+}
+
+bool MainWindow::isPythonFromConda(const QString &pythonPath)
+{
+    // 檢查 Python 路徑是否在 Conda 環境中 / Check if Python path is in Conda environment
+    QFileInfo pythonInfo(pythonPath);
+    QString pythonDir = pythonInfo.absolutePath();
+    
+    // 檢查路徑中是否包含 conda 相關關鍵字 / Check if path contains conda-related keywords
+    QString normalizedPath = QDir::toNativeSeparators(pythonDir).toLower();
+    if (normalizedPath.contains("anaconda") || 
+        normalizedPath.contains("miniconda") ||
+        normalizedPath.contains("conda")) {
+        
+        // 檢查是否在 envs 目錄下（conda 環境） / Check if it's in envs directory (conda environment)
+        if (normalizedPath.contains("envs")) {
+            // 向上查找 conda-meta 目錄 / Look up for conda-meta directory
+            QDir dir(pythonDir);
+            while (dir.cdUp()) {
+                QString condaMeta = dir.absoluteFilePath("conda-meta");
+                if (QFileInfo::exists(condaMeta)) {
+                    return true;
+                }
+                // 如果到達 envs 目錄，停止向上查找 / Stop if reached envs directory
+                if (dir.dirName().toLower() == "envs") {
+                    break;
+                }
+            }
+        } else {
+            // 檢查是否為 base 環境（直接在 anaconda3/miniconda3 目錄下） / Check if it's base environment
+            QDir dir(pythonDir);
+            // 向上查找 conda-meta 目錄 / Look up for conda-meta directory
+            while (dir.cdUp()) {
+                QString condaMeta = dir.absoluteFilePath("conda-meta");
+                if (QFileInfo::exists(condaMeta)) {
+                    return true;
+                }
+                // 如果到達根目錄或 Program Files，停止 / Stop if reached root or Program Files
+                if (dir.isRoot() || dir.dirName().isEmpty()) {
+                    break;
+                }
+            }
+        }
+    }
+    
+    // 檢查 Python 路徑的父目錄是否包含 conda-meta / Check if parent directory contains conda-meta
+    QDir pythonParentDir(pythonDir);
+    pythonParentDir.cdUp();
+    QString condaMeta = pythonParentDir.absoluteFilePath("conda-meta");
+    if (QFileInfo::exists(condaMeta)) {
+        return true;
+    }
+    
+    return false;
 }

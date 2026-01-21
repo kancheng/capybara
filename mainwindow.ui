@@ -61,6 +61,75 @@
      </widget>
     </item>
     <item>
+     <widget class="QPushButton" name="selectEnvButton">
+      <property name="text">
+       <string>指定此環境</string>
+      </property>
+      <property name="enabled">
+       <bool>false</bool>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="selectedEnvLabel">
+      <property name="text">
+       <string>已指定環境：無</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="systemInfoLabel">
+      <property name="text">
+       <string>系統信息：檢測中...</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="cudaInfoLabel">
+      <property name="text">
+       <string>CUDA：檢測中...</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="gpuInfoLabel">
+      <property name="text">
+       <string>GPU：檢測中...</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QFrame" name="line">
+      <property name="frameShape">
+       <enum>QFrame::HLine</enum>
+      </property>
+      <property name="frameShadow">
+       <enum>QFrame::Sunken</enum>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="pythonPackagesLabel">
+      <property name="text">
+       <string>Python 套件：未選擇環境</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="pytorchInfoLabel">
+      <property name="text">
+       <string>PyTorch：未檢測</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="ultralyticsInfoLabel">
+      <property name="text">
+       <string>Ultralytics：未檢測</string>
+      </property>
+     </widget>
+    </item>
+    <item>
      <widget class="QPushButton" name="refreshButton">
       <property name="text">
        <string>重新掃描</string>
