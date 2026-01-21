@@ -11,6 +11,8 @@
 #include <QIODevice>
 #include <QRegularExpression>
 #include <QApplication>
+#include <QSettings>
+#include <QTimer>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -33,6 +35,20 @@ MainWindow::MainWindow(QWidget *parent)
     
     // 檢測系統信息 / Detect system information
     detectSystemInfo();
+    
+    // 延遲載入保存的設定，確保 UI 完全初始化 / Delay loading saved settings to ensure UI is fully initialized
+    QTimer::singleShot(100, this, [this]() {
+        if (hasSavedSettings()) {
+            loadSettings();
+            applySavedSettings();
+        } else {
+            // 如果沒有保存的設定，提醒用戶 / If no saved settings, remind user
+            QMessageBox::information(this, 
+                                     tr("歡迎使用 Capybara / Welcome to Capybara"), 
+                                     tr("請選擇一個 Python 環境並點擊「指定此環境」按鈕來保存設定。\n"
+                                        "Please select a Python environment and click \"指定此環境\" button to save settings."));
+        }
+    });
 }
 
 MainWindow::~MainWindow()
@@ -756,6 +772,9 @@ void MainWindow::onSelectEnvButtonClicked()
         QString venvPython = getVenvPythonPath(venv.path);
         selectedPythonPath = venvPython;
         
+        // 保存設定 / Save settings
+        saveSettings();
+        
         // 調試：顯示 Python 路徑 / Debug: display Python path
         qDebug() << "=== 開始檢測環境 ===";
         qDebug() << "環境名稱:" << displayName;
@@ -1448,4 +1467,155 @@ bool MainWindow::isPythonFromConda(const QString &pythonPath)
     }
     
     return false;
+}
+
+// 設定保存和載入方法實現 / Settings save and load method implementations
+void MainWindow::saveSettings()
+{
+    // 使用 QSettings 保存設定 / Use QSettings to save settings
+    QSettings settings("Capybara", "PythonEnvironment");
+    
+    // 保存當前選擇的 Python 環境路徑 / Save current selected Python environment path
+    settings.setValue("pythonPath", currentPythonPath);
+    
+    // 保存選擇的虛擬環境信息 / Save selected virtual environment information
+    settings.setValue("venvName", selectedEnvName);
+    settings.setValue("venvPath", selectedEnvPath);
+    settings.setValue("venvPythonPath", selectedPythonPath);
+    
+    qDebug() << "設定已保存 / Settings saved:";
+    qDebug() << "  Python 路徑:" << currentPythonPath;
+    qDebug() << "  虛擬環境名稱:" << selectedEnvName;
+    qDebug() << "  虛擬環境路徑:" << selectedEnvPath;
+    qDebug() << "  Python 可執行文件路徑:" << selectedPythonPath;
+}
+
+void MainWindow::loadSettings()
+{
+    // 使用 QSettings 載入設定 / Use QSettings to load settings
+    QSettings settings("Capybara", "PythonEnvironment");
+    
+    // 載入保存的 Python 環境路徑 / Load saved Python environment path
+    currentPythonPath = settings.value("pythonPath").toString();
+    
+    // 載入保存的虛擬環境信息 / Load saved virtual environment information
+    selectedEnvName = settings.value("venvName").toString();
+    selectedEnvPath = settings.value("venvPath").toString();
+    selectedPythonPath = settings.value("venvPythonPath").toString();
+    
+    qDebug() << "設定已載入 / Settings loaded:";
+    qDebug() << "  Python 路徑:" << currentPythonPath;
+    qDebug() << "  虛擬環境名稱:" << selectedEnvName;
+    qDebug() << "  虛擬環境路徑:" << selectedEnvPath;
+    qDebug() << "  Python 可執行文件路徑:" << selectedPythonPath;
+}
+
+bool MainWindow::hasSavedSettings()
+{
+    // 檢查是否有保存的設定 / Check if saved settings exist
+    QSettings settings("Capybara", "PythonEnvironment");
+    
+    // 檢查關鍵設定是否存在 / Check if key settings exist
+    bool hasPythonPath = settings.contains("pythonPath") && !settings.value("pythonPath").toString().isEmpty();
+    bool hasVenvPath = settings.contains("venvPath") && !settings.value("venvPath").toString().isEmpty();
+    bool hasVenvPythonPath = settings.contains("venvPythonPath") && !settings.value("venvPythonPath").toString().isEmpty();
+    
+    return hasPythonPath && hasVenvPath && hasVenvPythonPath;
+}
+
+void MainWindow::applySavedSettings()
+{
+    // 應用保存的設定 / Apply saved settings
+    if (currentPythonPath.isEmpty() || selectedEnvPath.isEmpty() || selectedPythonPath.isEmpty()) {
+        qDebug() << "無法應用設定：設定不完整 / Cannot apply settings: settings incomplete";
+        return;
+    }
+    
+    // 驗證保存的路徑是否仍然存在 / Verify if saved paths still exist
+    if (!QFileInfo::exists(currentPythonPath)) {
+        qDebug() << "保存的 Python 路徑不存在:" << currentPythonPath;
+        QMessageBox::warning(this, 
+                            tr("設定錯誤 / Settings Error"), 
+                            tr("保存的 Python 環境路徑不存在，請重新選擇環境。\n"
+                               "Saved Python environment path does not exist, please reselect environment."));
+        return;
+    }
+    
+    if (!QFileInfo::exists(selectedPythonPath)) {
+        qDebug() << "保存的 Python 可執行文件路徑不存在:" << selectedPythonPath;
+        QMessageBox::warning(this, 
+                            tr("設定錯誤 / Settings Error"), 
+                            tr("保存的 Python 可執行文件路徑不存在，請重新選擇環境。\n"
+                               "Saved Python executable path does not exist, please reselect environment."));
+        return;
+    }
+    
+    // 在 Python 環境列表中查找匹配的環境 / Find matching environment in Python environments list
+    int pythonIndex = -1;
+    for (int i = 0; i < pythonEnvironments.size(); ++i) {
+        if (pythonEnvironments[i].path == currentPythonPath) {
+            pythonIndex = i;
+            break;
+        }
+    }
+    
+    if (pythonIndex >= 0) {
+        // 暫時阻止信號發射，避免遞歸調用 / Block signals temporarily to avoid recursive calls
+        ui->pythonComboBox->blockSignals(true);
+        ui->venvComboBox->blockSignals(true);
+        
+        // 設置 Python 環境選擇 / Set Python environment selection
+        ui->pythonComboBox->setCurrentIndex(pythonIndex);
+        ui->pythonPathLabel->setText("路徑：" + currentPythonPath);
+        
+        // 掃描該 Python 環境的虛擬環境 / Scan virtual environments for this Python environment
+        scanVirtualEnvironments(currentPythonPath);
+        
+        // 在虛擬環境列表中查找匹配的環境 / Find matching environment in virtual environments list
+        int venvIndex = -1;
+        for (int i = 0; i < virtualEnvironments.size(); ++i) {
+            if (virtualEnvironments[i].path == selectedEnvPath) {
+                venvIndex = i;
+                break;
+            }
+        }
+        
+        if (venvIndex >= 0) {
+            // 設置虛擬環境選擇 / Set virtual environment selection
+            ui->venvComboBox->setCurrentIndex(venvIndex);
+            
+            // 恢復信號發射 / Restore signal emission
+            ui->pythonComboBox->blockSignals(false);
+            ui->venvComboBox->blockSignals(false);
+            
+            // 更新顯示 / Update display
+            QString displayName = selectedEnvName;
+            if (displayName.startsWith("[Conda] ")) {
+                displayName = displayName.mid(8);
+            }
+            ui->selectedEnvLabel->setText(QString("已指定環境：%1").arg(displayName));
+            
+            // 自動執行檢測 / Automatically run detection
+            QApplication::processEvents();
+            detectPythonPackages(selectedPythonPath);
+            
+            qDebug() << "設定已成功應用 / Settings successfully applied";
+        } else {
+            // 恢復信號發射 / Restore signal emission
+            ui->pythonComboBox->blockSignals(false);
+            ui->venvComboBox->blockSignals(false);
+            
+            qDebug() << "無法找到保存的虛擬環境:" << selectedEnvPath;
+            QMessageBox::warning(this, 
+                                tr("設定警告 / Settings Warning"), 
+                                tr("無法找到保存的虛擬環境，請重新選擇。\n"
+                                   "Cannot find saved virtual environment, please reselect."));
+        }
+    } else {
+        qDebug() << "無法找到保存的 Python 環境:" << currentPythonPath;
+        QMessageBox::warning(this, 
+                            tr("設定警告 / Settings Warning"), 
+                            tr("無法找到保存的 Python 環境，請重新選擇。\n"
+                               "Cannot find saved Python environment, please reselect."));
+    }
 }

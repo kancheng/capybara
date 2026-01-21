@@ -67,6 +67,12 @@ private:
     QString checkPyTorch(const QString &pythonPath);
     QString checkUltralytics(const QString &pythonPath);
     bool isPythonFromConda(const QString &pythonPath); // 檢查 Python 是否來自 Conda 環境 / Check if Python is from Conda environment
+    
+    // 設定保存和載入方法 / Settings save and load methods
+    void saveSettings(); // 保存設定 / Save settings
+    void loadSettings(); // 載入設定 / Load settings
+    bool hasSavedSettings(); // 檢查是否有保存的設定 / Check if saved settings exist
+    void applySavedSettings(); // 應用保存的設定 / Apply saved settings
 
     Ui::MainWindow *ui;
     QList<PythonEnvironment> pythonEnvironments;
