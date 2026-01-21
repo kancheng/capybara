@@ -7,6 +7,9 @@
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
+    
+    // 設置應用程式圖標 / Set application icon
+    a.setWindowIcon(QIcon(":/icon/raw.png"));
 
     QTranslator translator;
     const QStringList uiLanguages = QLocale::system().uiLanguages();

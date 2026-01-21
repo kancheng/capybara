@@ -19,8 +19,15 @@ set(PROJECT_SOURCES
         mainwindow.cpp
         mainwindow.h
         mainwindow.ui
+        resources.qrc
         ${TS_FILES}
 )
+
+# Windows icon resource file / Windows 圖標資源文件
+# Windows uses .rc file for executable icon / Windows 使用 .rc 文件設置可執行文件圖標
+if(WIN32 AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/icon/raw.ico")
+    set(PROJECT_SOURCES ${PROJECT_SOURCES} capybara.rc)
+endif()
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_executable(capybara
@@ -64,6 +71,21 @@ set_target_properties(capybara PROPERTIES
     MACOSX_BUNDLE TRUE
     WIN32_EXECUTABLE TRUE
 )
+
+# Set application icon / 設置應用程式圖標
+if(WIN32)
+    # Windows uses .rc file for icon / Windows 使用 .rc 文件設置圖標
+    # The .rc file is already included in PROJECT_SOURCES if raw.ico exists
+    # .rc 文件已經在 raw.ico 存在時包含在 PROJECT_SOURCES 中
+elseif(APPLE)
+    # macOS uses .icns file / macOS 使用 .icns 文件
+    set_target_properties(capybara PROPERTIES
+        MACOSX_BUNDLE_ICON_FILE "raw.png"
+    )
+    set_source_files_properties("icon/raw.png" PROPERTIES
+        MACOSX_PACKAGE_LOCATION "Resources"
+    )
+endif()
 
 include(GNUInstallDirs)
 install(TARGETS capybara

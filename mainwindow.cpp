@@ -13,12 +13,16 @@
 #include <QApplication>
 #include <QSettings>
 #include <QTimer>
+#include <QIcon>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    
+    // 設置視窗圖標 / Set window icon
+    setWindowIcon(QIcon(":/icon/raw.png"));
     
     // 連接信號槽 / Connect signals and slots
     connect(ui->pythonComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
