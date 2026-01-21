@@ -40,6 +40,10 @@ MainWindow::MainWindow(QWidget *parent)
     QTimer::singleShot(100, this, [this]() {
         if (hasSavedSettings()) {
             loadSettings();
+            // 在應用設定前，先確保虛擬環境列表已更新 / Ensure virtual environments list is updated before applying settings
+            if (!currentPythonPath.isEmpty()) {
+                scanVirtualEnvironments(currentPythonPath);
+            }
             applySavedSettings();
         } else {
             // 如果沒有保存的設定，提醒用戶 / If no saved settings, remind user
@@ -722,7 +726,36 @@ void MainWindow::updateVenvComboBox()
         for (const VirtualEnvironment &venv : virtualEnvironments) {
             ui->venvComboBox->addItem(venv.displayName);
         }
-        ui->venvPathLabel->setText("虛擬環境路徑：" + virtualEnvironments[0].path);
+        
+        // 優先選擇保存的虛擬環境，如果沒有則選擇第一個 / Prefer saved virtual environment, otherwise select first
+        int selectedIndex = 0;
+        QString displayPath;
+        
+        // 檢查是否有保存的虛擬環境路徑 / Check if there's a saved virtual environment path
+        if (!selectedEnvPath.isEmpty()) {
+            // 查找保存的虛擬環境在列表中的位置 / Find saved virtual environment in the list
+            for (int i = 0; i < virtualEnvironments.size(); ++i) {
+                if (virtualEnvironments[i].path == selectedEnvPath) {
+                    selectedIndex = i;
+                    displayPath = selectedEnvPath; // 使用保存的路徑 / Use saved path
+                    break;
+                }
+            }
+        }
+        
+        // 如果沒有找到保存的環境，使用第一個 / If saved environment not found, use first
+        if (displayPath.isEmpty() && !virtualEnvironments.isEmpty()) {
+            selectedIndex = 0;
+            displayPath = virtualEnvironments[0].path;
+        }
+        
+        // 暫時阻止信號發射，避免觸發 onVenvComboBoxChanged / Block signals temporarily to avoid triggering onVenvComboBoxChanged
+        ui->venvComboBox->blockSignals(true);
+        ui->venvComboBox->setCurrentIndex(selectedIndex);
+        ui->venvComboBox->blockSignals(false);
+        
+        // 顯示虛擬環境路徑 / Display virtual environment path
+        ui->venvPathLabel->setText("虛擬環境路徑：" + displayPath);
         ui->selectEnvButton->setEnabled(true);
     }
 }
@@ -1571,6 +1604,8 @@ void MainWindow::applySavedSettings()
         // 掃描該 Python 環境的虛擬環境 / Scan virtual environments for this Python environment
         scanVirtualEnvironments(currentPythonPath);
         
+        // updateVenvComboBox 已經會自動選擇保存的環境或第一個，這裡只需要驗證並更新顯示 / updateVenvComboBox already selects saved or first, just verify and update display
+        
         // 在虛擬環境列表中查找匹配的環境 / Find matching environment in virtual environments list
         int venvIndex = -1;
         for (int i = 0; i < virtualEnvironments.size(); ++i) {
@@ -1581,8 +1616,10 @@ void MainWindow::applySavedSettings()
         }
         
         if (venvIndex >= 0) {
-            // 設置虛擬環境選擇 / Set virtual environment selection
+            // 確保選擇正確的虛擬環境 / Ensure correct virtual environment is selected
             ui->venvComboBox->setCurrentIndex(venvIndex);
+            // 更新路徑標籤顯示保存的路徑 / Update path label to show saved path
+            ui->venvPathLabel->setText("虛擬環境路徑：" + selectedEnvPath);
             
             // 恢復信號發射 / Restore signal emission
             ui->pythonComboBox->blockSignals(false);
