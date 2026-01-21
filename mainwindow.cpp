@@ -11,9 +11,25 @@
 #include <QIODevice>
 #include <QRegularExpression>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QSettings>
 #include <QTimer>
 #include <QIcon>
+#include <QFileDialog>
+#include <QListWidget>
+#include <QListWidgetItem>
+#include <QSpinBox>
+#include <QDoubleSpinBox>
+#include <QComboBox>
+#include <QCheckBox>
+#include <QFormLayout>
+#include <QScrollArea>
+#include <QSplitter>
+#include <QProgressDialog>
+#include <QProcess>
+#ifdef HAVE_OPENCV
+#include <opencv2/opencv.hpp>
+#endif
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -33,6 +49,11 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onSelectEnvButtonClicked);
     connect(ui->refreshButton, &QPushButton::clicked,
             this, &MainWindow::onRefreshButtonClicked);
+    
+    // 檢查並安裝 OpenCV / Check and install OpenCV
+    if (!checkOpenCVInstalled()) {
+        installOpenCV();
+    }
     
     // 掃描 Python 環境 / Scan Python environments
     scanPythonEnvironments();
@@ -57,6 +78,11 @@ MainWindow::MainWindow(QWidget *parent)
                                         "Please select a Python environment and click \"指定此環境\" button to save settings."));
         }
     });
+    
+    // 初始化數據處理模塊 / Initialize data processing module
+    imageProcessor = nullptr;
+    processingPipeline = nullptr;
+    setupDataProcessingTab();
 }
 
 MainWindow::~MainWindow()
@@ -1654,9 +1680,634 @@ void MainWindow::applySavedSettings()
         }
     } else {
         qDebug() << "無法找到保存的 Python 環境:" << currentPythonPath;
-        QMessageBox::warning(this, 
+            QMessageBox::warning(this, 
                             tr("設定警告 / Settings Warning"), 
                             tr("無法找到保存的 Python 環境，請重新選擇。\n"
                                "Cannot find saved Python environment, please reselect."));
+    }
+}
+
+// ========== 數據處理相關方法實現 / Data Processing Methods Implementation ==========
+
+void MainWindow::setupDataProcessingTab()
+{
+    // 初始化處理器 / Initialize processors
+    imageProcessor = new ImageProcessor(this);
+    processingPipeline = new ProcessingPipeline();
+    
+    // 連接信號槽 / Connect signals and slots
+    connect(ui->selectDirectoryButton, &QPushButton::clicked,
+            this, &MainWindow::onSelectDirectoryClicked);
+    connect(ui->imageListWidget, &QListWidget::itemSelectionChanged,
+            this, &MainWindow::onImageListSelectionChanged);
+    connect(ui->savePresetButton, &QPushButton::clicked,
+            this, &MainWindow::onSavePresetClicked);
+    connect(ui->loadPresetButton, &QPushButton::clicked,
+            this, &MainWindow::onLoadPresetClicked);
+    connect(ui->exportButton, &QPushButton::clicked,
+            this, &MainWindow::onExportClicked);
+    
+    // 初始化 OpenCV 參數控件 / Initialize OpenCV parameter controls
+    setupOpenCVParameters();
+}
+
+void MainWindow::onSelectDirectoryClicked()
+{
+    QString dir = QFileDialog::getExistingDirectory(this, 
+        tr("選擇圖像目錄 / Select Image Directory"),
+        currentDirectory.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::PicturesLocation) : currentDirectory);
+    
+    if (!dir.isEmpty()) {
+        currentDirectory = dir;
+        scanImageDirectory(dir);
+    }
+}
+
+void MainWindow::scanImageDirectory(const QString &dir)
+{
+    imageFileList.clear();
+    ui->imageListWidget->clear();
+    directoryStats.reset();
+    
+    // 支持的圖像格式 / Supported image formats
+    QStringList filters = {"*.jpg", "*.jpeg", "*.png", "*.bmp", 
+                          "*.tiff", "*.tif", "*.webp", "*.gif"};
+    QDir directory(dir);
+    QStringList files = directory.entryList(filters, QDir::Files, QDir::Name);
+    
+    for (const QString &file : files) {
+        QString fullPath = directory.absoluteFilePath(file);
+        imageFileList.append(fullPath);
+        ui->imageListWidget->addItem(file);
+        
+        // 分析圖像信息 / Analyze image information
+        ImageInfo info = ImageInfo::analyzeImage(fullPath);
+        if (info.width > 0 && info.height > 0) {
+            directoryStats.addImage(info);
+        }
+    }
+    
+    // 更新目錄路徑標籤 / Update directory path label
+    ui->directoryPathLabel->setText(QString("目錄 / Directory: %1").arg(dir));
+    
+    // 更新統計信息 / Update statistics
+    updateDirectoryStats();
+    
+    // 如果有圖像，選擇第一個 / If images exist, select first one
+    if (ui->imageListWidget->count() > 0) {
+        ui->imageListWidget->setCurrentRow(0);
+    }
+}
+
+void MainWindow::onImageListSelectionChanged()
+{
+    QList<QListWidgetItem*> selected = ui->imageListWidget->selectedItems();
+    if (selected.isEmpty()) {
+        currentImagePath.clear();
+        ui->currentImageInfoText->clear();
+        ui->imagePreviewLabel->setText("預覽區域 / Preview Area");
+        ui->imagePreviewLabel->setPixmap(QPixmap());
+        return;
+    }
+    
+    int row = ui->imageListWidget->row(selected.first());
+    if (row >= 0 && row < imageFileList.size()) {
+        currentImagePath = imageFileList[row];
+        updateImageInfo(currentImagePath);
+        updateImagePreview();
+    }
+}
+
+void MainWindow::updateImageInfo(const QString &imagePath)
+{
+    ImageInfo info = ImageInfo::analyzeImage(imagePath);
+    ui->currentImageInfoText->setText(info.toString());
+}
+
+void MainWindow::updateDirectoryStats()
+{
+    ui->directoryStatsText->setText(directoryStats.toString());
+}
+
+void MainWindow::updateImagePreview()
+{
+    if (currentImagePath.isEmpty()) {
+        return;
+    }
+    
+#ifdef HAVE_OPENCV
+    // 載入原始圖像 / Load original image
+    cv::Mat original = imageProcessor->loadImage(currentImagePath);
+    if (original.empty()) {
+        ui->imagePreviewLabel->setText("無法載入圖像 / Failed to load image");
+        return;
+    }
+    
+    // 應用處理管道 / Apply processing pipeline
+    cv::Mat processed = processingPipeline->apply(original);
+    if (processed.empty()) {
+        processed = original.clone();
+    }
+    
+    // 轉換為 QImage 並顯示 / Convert to QImage and display
+    QImage qimg = ImageProcessor::matToQImage(processed);
+    
+    // 縮放以適應預覽區域 / Scale to fit preview area
+    QSize labelSize = ui->imagePreviewLabel->size();
+    if (labelSize.width() > 0 && labelSize.height() > 0) {
+        QPixmap pixmap = QPixmap::fromImage(qimg);
+        QPixmap scaled = pixmap.scaled(labelSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        ui->imagePreviewLabel->setPixmap(scaled);
+    } else {
+        ui->imagePreviewLabel->setPixmap(QPixmap::fromImage(qimg));
+    }
+#else
+    // 如果沒有 OpenCV，使用 QImage 直接載入 / If no OpenCV, load directly with QImage
+    QImage qimg(currentImagePath);
+    if (qimg.isNull()) {
+        ui->imagePreviewLabel->setText("無法載入圖像 / Failed to load image\n(需要 OpenCV 支持 / OpenCV required)");
+        return;
+    }
+    
+    QSize labelSize = ui->imagePreviewLabel->size();
+    if (labelSize.width() > 0 && labelSize.height() > 0) {
+        QPixmap pixmap = QPixmap::fromImage(qimg);
+        QPixmap scaled = pixmap.scaled(labelSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        ui->imagePreviewLabel->setPixmap(scaled);
+    } else {
+        ui->imagePreviewLabel->setPixmap(QPixmap::fromImage(qimg));
+    }
+#endif
+}
+
+void MainWindow::setupOpenCVParameters()
+{
+    QFormLayout *layout = ui->opencvParamsLayout;
+    
+    // 高斯模糊參數 / Gaussian Blur parameters
+    QSpinBox *blurKSize = new QSpinBox();
+    blurKSize->setRange(1, 99);
+    blurKSize->setSingleStep(2);
+    blurKSize->setValue(5);
+    blurKSize->setObjectName("blurKSize");
+    connect(blurKSize, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, &MainWindow::onParameterChanged);
+    layout->addRow("Gaussian Blur KSize:", blurKSize);
+    parameterWidgets["blurKSize"] = blurKSize;
+    
+    QDoubleSpinBox *blurSigmaX = new QDoubleSpinBox();
+    blurSigmaX->setRange(0.1, 10.0);
+    blurSigmaX->setSingleStep(0.1);
+    blurSigmaX->setValue(1.0);
+    blurSigmaX->setObjectName("blurSigmaX");
+    connect(blurSigmaX, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &MainWindow::onParameterChanged);
+    layout->addRow("Gaussian Blur SigmaX:", blurSigmaX);
+    parameterWidgets["blurSigmaX"] = blurSigmaX;
+    
+    QCheckBox *enableBlur = new QCheckBox();
+    enableBlur->setObjectName("enableBlur");
+    connect(enableBlur, &QCheckBox::toggled, this, &MainWindow::onParameterChanged);
+    layout->addRow("Enable Gaussian Blur:", enableBlur);
+    parameterWidgets["enableBlur"] = enableBlur;
+    
+    // Canny 邊緣檢測參數 / Canny edge detection parameters
+    QDoubleSpinBox *cannyThreshold1 = new QDoubleSpinBox();
+    cannyThreshold1->setRange(0, 500);
+    cannyThreshold1->setSingleStep(10);
+    cannyThreshold1->setValue(50);
+    cannyThreshold1->setObjectName("cannyThreshold1");
+    connect(cannyThreshold1, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &MainWindow::onParameterChanged);
+    layout->addRow("Canny Threshold1:", cannyThreshold1);
+    parameterWidgets["cannyThreshold1"] = cannyThreshold1;
+    
+    QDoubleSpinBox *cannyThreshold2 = new QDoubleSpinBox();
+    cannyThreshold2->setRange(0, 500);
+    cannyThreshold2->setSingleStep(10);
+    cannyThreshold2->setValue(150);
+    cannyThreshold2->setObjectName("cannyThreshold2");
+    connect(cannyThreshold2, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &MainWindow::onParameterChanged);
+    layout->addRow("Canny Threshold2:", cannyThreshold2);
+    parameterWidgets["cannyThreshold2"] = cannyThreshold2;
+    
+    QCheckBox *enableCanny = new QCheckBox();
+    enableCanny->setObjectName("enableCanny");
+    connect(enableCanny, &QCheckBox::toggled, this, &MainWindow::onParameterChanged);
+    layout->addRow("Enable Canny:", enableCanny);
+    parameterWidgets["enableCanny"] = enableCanny;
+    
+    // 亮度對比度參數 / Brightness and contrast parameters
+    QDoubleSpinBox *brightnessAlpha = new QDoubleSpinBox();
+    brightnessAlpha->setRange(0.1, 3.0);
+    brightnessAlpha->setSingleStep(0.1);
+    brightnessAlpha->setValue(1.0);
+    brightnessAlpha->setObjectName("brightnessAlpha");
+    connect(brightnessAlpha, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &MainWindow::onParameterChanged);
+    layout->addRow("Brightness Alpha:", brightnessAlpha);
+    parameterWidgets["brightnessAlpha"] = brightnessAlpha;
+    
+    QSpinBox *brightnessBeta = new QSpinBox();
+    brightnessBeta->setRange(-100, 100);
+    brightnessBeta->setSingleStep(10);
+    brightnessBeta->setValue(0);
+    brightnessBeta->setObjectName("brightnessBeta");
+    connect(brightnessBeta, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, &MainWindow::onParameterChanged);
+    layout->addRow("Brightness Beta:", brightnessBeta);
+    parameterWidgets["brightnessBeta"] = brightnessBeta;
+    
+    QCheckBox *enableBrightness = new QCheckBox();
+    enableBrightness->setObjectName("enableBrightness");
+    connect(enableBrightness, &QCheckBox::toggled, this, &MainWindow::onParameterChanged);
+    layout->addRow("Enable Brightness/Contrast:", enableBrightness);
+    parameterWidgets["enableBrightness"] = enableBrightness;
+    
+    // Gamma 校正參數 / Gamma correction parameters
+    QDoubleSpinBox *gamma = new QDoubleSpinBox();
+    gamma->setRange(0.1, 3.0);
+    gamma->setSingleStep(0.1);
+    gamma->setValue(1.0);
+    gamma->setObjectName("gamma");
+    connect(gamma, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &MainWindow::onParameterChanged);
+    layout->addRow("Gamma:", gamma);
+    parameterWidgets["gamma"] = gamma;
+    
+    QCheckBox *enableGamma = new QCheckBox();
+    enableGamma->setObjectName("enableGamma");
+    connect(enableGamma, &QCheckBox::toggled, this, &MainWindow::onParameterChanged);
+    layout->addRow("Enable Gamma:", enableGamma);
+    parameterWidgets["enableGamma"] = enableGamma;
+    
+    // 顏色空間轉換 / Color space conversion
+    QComboBox *colorSpace = new QComboBox();
+#ifdef HAVE_OPENCV
+    colorSpace->addItem("BGR (Original)", cv::COLOR_BGR2BGR);
+    colorSpace->addItem("Grayscale", cv::COLOR_BGR2GRAY);
+    colorSpace->addItem("HSV", cv::COLOR_BGR2HSV);
+    colorSpace->addItem("LAB", cv::COLOR_BGR2LAB);
+#else
+    colorSpace->addItem("BGR (Original)", 0);
+    colorSpace->addItem("Grayscale", 6);
+    colorSpace->addItem("HSV", 40);
+    colorSpace->addItem("LAB", 44);
+#endif
+    colorSpace->setObjectName("colorSpace");
+    connect(colorSpace, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onParameterChanged);
+    layout->addRow("Color Space:", colorSpace);
+    parameterWidgets["colorSpace"] = colorSpace;
+}
+
+void MainWindow::onParameterChanged()
+{
+    // 重建處理管道 / Rebuild processing pipeline
+    processingPipeline->clear();
+    
+    // 高斯模糊 / Gaussian Blur
+    QCheckBox *enableBlur = qobject_cast<QCheckBox*>(parameterWidgets["enableBlur"]);
+    if (enableBlur && enableBlur->isChecked()) {
+        QSpinBox *blurKSize = qobject_cast<QSpinBox*>(parameterWidgets["blurKSize"]);
+        QDoubleSpinBox *blurSigmaX = qobject_cast<QDoubleSpinBox*>(parameterWidgets["blurSigmaX"]);
+        if (blurKSize && blurSigmaX) {
+            QJsonObject params;
+            params["ksize"] = blurKSize->value();
+            params["sigmaX"] = blurSigmaX->value();
+            ProcessingOperation op("gaussianBlur", params);
+            processingPipeline->addOperation(op);
+        }
+    }
+    
+    // Canny 邊緣檢測 / Canny edge detection
+    QCheckBox *enableCanny = qobject_cast<QCheckBox*>(parameterWidgets["enableCanny"]);
+    if (enableCanny && enableCanny->isChecked()) {
+        QDoubleSpinBox *cannyThreshold1 = qobject_cast<QDoubleSpinBox*>(parameterWidgets["cannyThreshold1"]);
+        QDoubleSpinBox *cannyThreshold2 = qobject_cast<QDoubleSpinBox*>(parameterWidgets["cannyThreshold2"]);
+        if (cannyThreshold1 && cannyThreshold2) {
+            QJsonObject params;
+            params["threshold1"] = cannyThreshold1->value();
+            params["threshold2"] = cannyThreshold2->value();
+            ProcessingOperation op("canny", params);
+            processingPipeline->addOperation(op);
+        }
+    }
+    
+    // 亮度對比度 / Brightness and contrast
+    QCheckBox *enableBrightness = qobject_cast<QCheckBox*>(parameterWidgets["enableBrightness"]);
+    if (enableBrightness && enableBrightness->isChecked()) {
+        QDoubleSpinBox *brightnessAlpha = qobject_cast<QDoubleSpinBox*>(parameterWidgets["brightnessAlpha"]);
+        QSpinBox *brightnessBeta = qobject_cast<QSpinBox*>(parameterWidgets["brightnessBeta"]);
+        if (brightnessAlpha && brightnessBeta) {
+            QJsonObject params;
+            params["alpha"] = brightnessAlpha->value();
+            params["beta"] = brightnessBeta->value();
+            ProcessingOperation op("brightnessContrast", params);
+            processingPipeline->addOperation(op);
+        }
+    }
+    
+    // Gamma 校正 / Gamma correction
+    QCheckBox *enableGamma = qobject_cast<QCheckBox*>(parameterWidgets["enableGamma"]);
+    if (enableGamma && enableGamma->isChecked()) {
+        QDoubleSpinBox *gamma = qobject_cast<QDoubleSpinBox*>(parameterWidgets["gamma"]);
+        if (gamma) {
+            QJsonObject params;
+            params["gamma"] = gamma->value();
+            ProcessingOperation op("gamma", params);
+            processingPipeline->addOperation(op);
+        }
+    }
+    
+    // 顏色空間轉換 / Color space conversion
+    QComboBox *colorSpace = qobject_cast<QComboBox*>(parameterWidgets["colorSpace"]);
+    if (colorSpace) {
+#ifdef HAVE_OPENCV
+        if (colorSpace->currentData().toInt() != cv::COLOR_BGR2BGR) {
+#else
+        if (colorSpace->currentData().toInt() != 0) {  // 0 = BGR (Original)
+#endif
+            QJsonObject params;
+            params["code"] = colorSpace->currentData().toInt();
+            ProcessingOperation op("convertColor", params);
+            processingPipeline->addOperation(op);
+        }
+    }
+    
+    // 更新預覽 / Update preview
+    updateImagePreview();
+}
+
+void MainWindow::onSavePresetClicked()
+{
+    QString filename = QFileDialog::getSaveFileName(this,
+        tr("保存預設 / Save Preset"),
+        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation),
+        tr("JSON Files (*.json)"));
+    
+    if (!filename.isEmpty()) {
+        if (!filename.endsWith(".json", Qt::CaseInsensitive)) {
+            filename += ".json";
+        }
+        if (processingPipeline->saveToFile(filename)) {
+            QMessageBox::information(this, tr("成功 / Success"),
+                tr("預設已保存 / Preset saved: %1").arg(filename));
+        } else {
+            QMessageBox::warning(this, tr("錯誤 / Error"),
+                tr("無法保存預設 / Failed to save preset"));
+        }
+    }
+}
+
+void MainWindow::onLoadPresetClicked()
+{
+    QString filename = QFileDialog::getOpenFileName(this,
+        tr("載入預設 / Load Preset"),
+        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation),
+        tr("JSON Files (*.json)"));
+    
+    if (!filename.isEmpty()) {
+        if (processingPipeline->loadFromFile(filename)) {
+            // 從管道更新參數控件 / Update parameter widgets from pipeline
+            // 這裡可以實現更複雜的參數恢復邏輯 / More complex parameter restoration logic can be implemented here
+            QMessageBox::information(this, tr("成功 / Success"),
+                tr("預設已載入 / Preset loaded: %1").arg(filename));
+            updateImagePreview();
+        } else {
+            QMessageBox::warning(this, tr("錯誤 / Error"),
+                tr("無法載入預設 / Failed to load preset"));
+        }
+    }
+}
+
+void MainWindow::onExportClicked()
+{
+    if (currentImagePath.isEmpty() && imageFileList.isEmpty()) {
+        QMessageBox::warning(this, tr("警告 / Warning"),
+            tr("請先選擇圖像或目錄 / Please select an image or directory first"));
+        return;
+    }
+    
+    // 選擇輸出目錄 / Select output directory
+    QString outputDir = QFileDialog::getExistingDirectory(this,
+        tr("選擇輸出目錄 / Select Output Directory"),
+        currentDirectory.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::PicturesLocation) : currentDirectory);
+    
+    if (outputDir.isEmpty()) {
+        return;
+    }
+    
+    // 檢查是否有選中的圖像 / Check if image is selected
+    QList<QListWidgetItem*> selected = ui->imageListWidget->selectedItems();
+    
+    if (!selected.isEmpty() && selected.size() == 1) {
+        // 單文件處理 / Single file processing
+        int row = ui->imageListWidget->row(selected.first());
+        if (row >= 0 && row < imageFileList.size()) {
+            QString inputFile = imageFileList[row];
+            QFileInfo fileInfo(inputFile);
+            QString outputFile = QDir(outputDir).absoluteFilePath("processed_" + fileInfo.fileName());
+            exportImage(inputFile, outputFile);
+            QMessageBox::information(this, tr("完成 / Complete"),
+                tr("圖像已匯出 / Image exported: %1").arg(outputFile));
+        }
+    } else {
+        // 批次處理 / Batch processing
+        exportDirectory(outputDir);
+        QMessageBox::information(this, tr("完成 / Complete"),
+            tr("批次處理完成 / Batch processing completed"));
+    }
+}
+
+void MainWindow::exportImage(const QString &inputPath, const QString &outputPath)
+{
+#ifdef HAVE_OPENCV
+    cv::Mat original = imageProcessor->loadImage(inputPath);
+    if (original.empty()) {
+        qDebug() << "Failed to load image:" << inputPath;
+        return;
+    }
+    
+    cv::Mat processed = processingPipeline->apply(original);
+    if (processed.empty()) {
+        processed = original.clone();
+    }
+    
+    ImageProcessor::saveImage(processed, outputPath);
+#else
+    Q_UNUSED(inputPath);
+    Q_UNUSED(outputPath);
+    QMessageBox::warning(this, "Error",
+        "OpenCV not installed, cannot export images");
+#endif
+}
+
+void MainWindow::exportDirectory(const QString &outputDir)
+{
+    QDir outputDirectory(outputDir);
+    if (!outputDirectory.exists()) {
+        outputDirectory.mkpath(".");
+    }
+    
+    int processed = 0;
+    for (const QString &inputPath : imageFileList) {
+        QFileInfo fileInfo(inputPath);
+        QString outputPath = outputDirectory.absoluteFilePath("processed_" + fileInfo.fileName());
+        exportImage(inputPath, outputPath);
+        processed++;
+    }
+    
+    qDebug() << QString("Processed %1 images").arg(processed);
+}
+
+bool MainWindow::checkOpenCVInstalled()
+{
+    // Check if HAVE_OPENCV is defined at compile time
+#ifdef HAVE_OPENCV
+    return true;
+#else
+    // Runtime check: look for OpenCV in common locations
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    
+    // Check environment variables
+    QString opencvDir = env.value("OpenCV_DIR");
+    if (opencvDir.isEmpty()) {
+        opencvDir = env.value("OPENCV_DIR");
+    }
+    
+    if (!opencvDir.isEmpty()) {
+        QFileInfo configFile(opencvDir + "/OpenCVConfig.cmake");
+        if (configFile.exists()) {
+            return true;
+        }
+        // Check for include directory
+        QFileInfo headerFile(opencvDir + "/include/opencv2/opencv.hpp");
+        if (headerFile.exists()) {
+            return true;
+        }
+    }
+    
+    // Check common installation paths
+    QString userProfile = env.value("USERPROFILE");
+    if (!userProfile.isEmpty()) {
+        QStringList possiblePaths = {
+            userProfile + "/opencv/opencv/build/include/opencv2/opencv.hpp",
+            userProfile + "/opencv/build/include/opencv2/opencv.hpp",
+            "C:/opencv/build/include/opencv2/opencv.hpp",
+            "C:/opencv/include/opencv2/opencv.hpp"
+        };
+        
+        for (const QString &path : possiblePaths) {
+            if (QFileInfo::exists(path)) {
+                return true;
+            }
+        }
+    }
+    
+    return false;
+#endif
+}
+
+void MainWindow::installOpenCV()
+{
+    // Show message to user
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle("OpenCV Not Found");
+    msgBox.setText("OpenCV is not installed. Would you like to install it automatically?");
+    msgBox.setInformativeText("This will download and install OpenCV automatically. The installation may take several minutes.");
+    msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+    msgBox.setDefaultButton(QMessageBox::Yes);
+    msgBox.setIcon(QMessageBox::Question);
+    
+    if (msgBox.exec() != QMessageBox::Yes) {
+        QMessageBox::information(this, "OpenCV Required",
+            "Image processing features will be disabled without OpenCV.\n"
+            "You can install OpenCV later by running:\n"
+            "  .\\install_opencv.ps1");
+        return;
+    }
+    
+    // Get the script path - try multiple locations
+    QString scriptPath;
+    QStringList possiblePaths = {
+        QDir::currentPath() + "/install_opencv.ps1",
+        QApplication::applicationDirPath() + "/install_opencv.ps1",
+        QCoreApplication::applicationFilePath().replace(".exe", "") + "/install_opencv.ps1"
+    };
+    
+    // Also try to find it relative to the executable
+    QFileInfo exeInfo(QApplication::applicationFilePath());
+    possiblePaths << exeInfo.absolutePath() + "/install_opencv.ps1";
+    possiblePaths << exeInfo.absolutePath() + "/../install_opencv.ps1";
+    
+    for (const QString &path : possiblePaths) {
+        if (QFile::exists(path)) {
+            scriptPath = path;
+            break;
+        }
+    }
+    
+    if (scriptPath.isEmpty()) {
+        QMessageBox::warning(this, "Script Not Found",
+            "Cannot find install_opencv.ps1 script.\n"
+            "Please run the installation script manually:\n"
+            "  .\\install_opencv.ps1");
+        return;
+    }
+    
+    // Create progress dialog
+    QProgressDialog progress("Installing OpenCV...", "Cancel", 0, 0, this);
+    progress.setWindowModality(Qt::WindowModal);
+    progress.setWindowTitle("Installing OpenCV");
+    progress.setLabelText("Downloading and installing OpenCV. This may take several minutes...");
+    progress.setCancelButton(nullptr); // Don't allow cancellation
+    progress.show();
+    QApplication::processEvents();
+    
+    // Run PowerShell script
+    QProcess process;
+    process.setProcessChannelMode(QProcess::MergedChannels);
+    
+    QString powershell = "powershell.exe";
+    QStringList arguments;
+    arguments << "-ExecutionPolicy" << "Bypass" << "-File" << QDir::toNativeSeparators(scriptPath);
+    
+    process.start(powershell, arguments);
+    
+    if (!process.waitForStarted(3000)) {
+        progress.close();
+        QMessageBox::critical(this, "Installation Failed",
+            "Failed to start installation script.");
+        return;
+    }
+    
+    // Wait for completion (with timeout)
+    bool finished = process.waitForFinished(600000); // 10 minutes timeout
+    
+    progress.close();
+    
+    if (!finished) {
+        QMessageBox::warning(this, "Installation Timeout",
+            "Installation is taking longer than expected.\n"
+            "The installation may still be running in the background.\n"
+            "Please check the PowerShell window and restart the application after installation completes.");
+        return;
+    }
+    
+    int exitCode = process.exitCode();
+    QString output = process.readAllStandardOutput();
+    
+    if (exitCode == 0) {
+        QMessageBox::information(this, "Installation Complete",
+            "OpenCV has been installed successfully!\n\n"
+            "Please restart the application to use OpenCV features.");
+    } else {
+        QMessageBox::warning(this, "Installation Failed",
+            QString("OpenCV installation failed with exit code: %1\n\n"
+                   "Please try running the installation script manually:\n"
+                   "  .\\install_opencv.ps1\n\n"
+                   "Error output:\n%2").arg(exitCode).arg(output));
     }
 }

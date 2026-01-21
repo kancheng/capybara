@@ -169,43 +169,181 @@
        </attribute>
        <layout class="QVBoxLayout" name="verticalLayout_3">
         <item>
-         <widget class="QLabel" name="dataProcessingLabel">
-          <property name="text">
-           <string>數據處理模塊 / Data Processing Module</string>
-          </property>
-          <property name="alignment">
-           <set>Qt::AlignCenter</set>
-          </property>
-          <property name="styleSheet">
-           <string>font-size: 18px; font-weight: bold; color: #666;</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="dataProcessingStatusLabel">
-          <property name="text">
-           <string>🚧 此功能正在開發中 / This feature is under development</string>
-          </property>
-          <property name="alignment">
-           <set>Qt::AlignCenter</set>
-          </property>
-          <property name="styleSheet">
-           <string>font-size: 14px; color: #999;</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <spacer name="verticalSpacer_2">
+         <widget class="QSplitter" name="dataProcessingSplitter">
           <property name="orientation">
-           <enum>Qt::Vertical</enum>
+           <enum>Qt::Horizontal</enum>
           </property>
-          <property name="sizeHint" stdset="0">
+          <property name="childrenCollapsible">
+           <bool>false</bool>
+          </property>
+          <!-- 左側：文件列表和目錄選擇 -->
+          <widget class="QWidget" name="leftPanel">
+           <property name="minimumSize">
+            <size>
+             <width>250</width>
+             <height>0</height>
+            </size>
+           </property>
+           <layout class="QVBoxLayout" name="leftPanelLayout">
+            <item>
+             <widget class="QPushButton" name="selectDirectoryButton">
+              <property name="text">
+               <string>選擇目錄 / Select Directory</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="directoryPathLabel">
+              <property name="text">
+               <string>目錄：未選擇 / Directory: Not selected</string>
+              </property>
+              <property name="wordWrap">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="imageListLabel">
+              <property name="text">
+               <string>圖像列表 / Image List:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QListWidget" name="imageListWidget">
+              <property name="selectionMode">
+               <enum>QAbstractItemView::SingleSelection</enum>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="currentImageInfoLabel">
+              <property name="text">
+               <string>當前圖像信息 / Current Image Info:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QTextEdit" name="currentImageInfoText">
+              <property name="readOnly">
+               <bool>true</bool>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>16777215</width>
+                <height>150</height>
+               </size>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          <!-- 右側：預覽和參數控制 -->
+          <widget class="QWidget" name="rightPanel">
+           <layout class="QVBoxLayout" name="rightPanelLayout">
+            <item>
+             <widget class="QLabel" name="previewLabel">
+              <property name="text">
+               <string>圖像預覽 / Image Preview:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="imagePreviewLabel">
+              <property name="minimumSize">
+               <size>
+                <width>400</width>
+                <height>300</height>
+               </size>
+              </property>
+              <property name="alignment">
+               <set>Qt::AlignCenter</set>
+              </property>
+              <property name="styleSheet">
+               <string>border: 1px solid gray; background-color: #f0f0f0;</string>
+              </property>
+              <property name="text">
+               <string>預覽區域 / Preview Area</string>
+              </property>
+              <property name="scaledContents">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="opencvParamsLabel">
+              <property name="text">
+               <string>OpenCV 參數 / OpenCV Parameters:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QScrollArea" name="opencvParamsScrollArea">
+              <property name="widgetResizable">
+               <bool>true</bool>
+              </property>
+              <widget class="QWidget" name="opencvParamsWidget">
+               <property name="geometry">
+                <rect>
+                 <x>0</x>
+                 <y>0</y>
+                 <width>400</width>
+                 <height>200</height>
+                </rect>
+               </property>
+               <layout class="QFormLayout" name="opencvParamsLayout">
+               </layout>
+              </widget>
+             </widget>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="buttonLayout">
+              <item>
+               <widget class="QPushButton" name="savePresetButton">
+                <property name="text">
+                 <string>保存預設 / Save Preset</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="loadPresetButton">
+                <property name="text">
+                 <string>載入預設 / Load Preset</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="exportButton">
+                <property name="text">
+                 <string>匯出 / Export</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="directoryStatsLabel">
+          <property name="text">
+           <string>目錄統計 / Directory Statistics:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QTextEdit" name="directoryStatsText">
+          <property name="readOnly">
+           <bool>true</bool>
+          </property>
+          <property name="maximumSize">
            <size>
-            <width>20</width>
-            <height>40</height>
+            <width>16777215</width>
+            <height>200</height>
            </size>
           </property>
-         </spacer>
+         </widget>
         </item>
        </layout>
       </widget>

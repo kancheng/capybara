@@ -12,6 +12,86 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets LinguistTools)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets LinguistTools)
 
+# Find OpenCV
+# Try to find OpenCV, but make it optional
+find_package(OpenCV QUIET)
+
+if(OpenCV_FOUND)
+    message(STATUS "OpenCV found: ${OpenCV_VERSION}")
+    message(STATUS "OpenCV include dirs: ${OpenCV_INCLUDE_DIRS}")
+    message(STATUS "OpenCV libraries: ${OpenCV_LIBS}")
+    include_directories(${OpenCV_INCLUDE_DIRS})
+    set(HAVE_OPENCV TRUE)
+else()
+    # Try alternative method
+    find_path(OpenCV_INCLUDE_DIRS 
+        NAMES opencv2/opencv.hpp
+        PATHS
+            /usr/local/include
+            /usr/include
+            "C:/opencv/include"
+            "C:/opencv/build/include"
+            "$ENV{USERPROFILE}/opencv/opencv/build/include"
+            "$ENV{USERPROFILE}/opencv/build/include"
+            "$ENV{OpenCV_DIR}/include"
+            "$ENV{OPENCV_DIR}/include"
+            "$ENV{OpenCV_DIR}"
+            "$ENV{OPENCV_DIR}"
+    )
+    
+    if(OpenCV_INCLUDE_DIRS)
+        message(STATUS "OpenCV headers found at: ${OpenCV_INCLUDE_DIRS}")
+        include_directories(${OpenCV_INCLUDE_DIRS})
+        # Try to find libraries
+        find_library(OpenCV_LIBS
+            NAMES opencv_world opencv_core opencv_imgproc opencv_imgcodecs
+            PATHS
+                /usr/local/lib
+                /usr/lib
+                "C:/opencv/build/x64/vc15/lib"
+                "C:/opencv/build/x64/vc16/lib"
+                "C:/opencv/build/x64/mingw/lib"
+                "$ENV{USERPROFILE}/opencv/opencv/build/x64/vc15/lib"
+                "$ENV{USERPROFILE}/opencv/opencv/build/x64/vc16/lib"
+                "$ENV{USERPROFILE}/opencv/opencv/build/x64/mingw/lib"
+                "$ENV{USERPROFILE}/opencv/build/x64/vc15/lib"
+                "$ENV{USERPROFILE}/opencv/build/x64/vc16/lib"
+                "$ENV{USERPROFILE}/opencv/build/x64/mingw/lib"
+                "$ENV{OpenCV_DIR}/lib"
+                "$ENV{OPENCV_DIR}/lib"
+        )
+        if(OpenCV_LIBS)
+            message(STATUS "OpenCV libraries found: ${OpenCV_LIBS}")
+            set(HAVE_OPENCV TRUE)
+            set(OpenCV_FOUND TRUE)
+        else()
+            message(WARNING "OpenCV headers found but libraries not found. OpenCV features will be disabled.")
+            set(HAVE_OPENCV FALSE)
+        endif()
+    else()
+        message(WARNING "OpenCV not found. Image processing features will be disabled.")
+        message(WARNING "")
+        message(WARNING "================================================")
+        message(WARNING "Auto-install OpenCV:")
+        message(WARNING "================================================")
+        message(WARNING "Run one of the following commands in PowerShell:")
+        message(WARNING "")
+        message(WARNING "  Method 1 (Recommended): Use auto-install script")
+        message(WARNING "    ./install_opencv.ps1")
+        message(WARNING "")
+        message(WARNING "  Method 2: Use vcpkg (if installed)")
+        message(WARNING "    ./install_opencv_simple.ps1")
+        message(WARNING "")
+        message(WARNING "Manual installation options:")
+        message(WARNING "  1. Install via vcpkg: vcpkg install opencv")
+        message(WARNING "  2. Set OpenCV_DIR to directory containing OpenCVConfig.cmake")
+        message(WARNING "  3. Add OpenCV installation prefix to CMAKE_PREFIX_PATH")
+        message(WARNING "  4. Set OPENCV_DIR environment variable")
+        message(WARNING "================================================")
+        set(HAVE_OPENCV FALSE)
+    endif()
+endif()
+
 set(TS_FILES capybara_en_US.ts)
 
 set(PROJECT_SOURCES
@@ -19,12 +99,18 @@ set(PROJECT_SOURCES
         mainwindow.cpp
         mainwindow.h
         mainwindow.ui
+        imageinfo.cpp
+        imageinfo.h
+        imageprocessor.cpp
+        imageprocessor.h
+        processingpipeline.cpp
+        processingpipeline.h
         resources.qrc
         ${TS_FILES}
 )
 
-# Windows icon resource file / Windows 圖標資源文件
-# Windows uses .rc file for executable icon / Windows 使用 .rc 文件設置可執行文件圖標
+# Windows icon resource file
+# Windows uses .rc file for executable icon
 if(WIN32 AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/icon/raw.ico")
     set(PROJECT_SOURCES ${PROJECT_SOURCES} capybara.rc)
 endif()
@@ -56,7 +142,25 @@ else()
     qt5_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})
 endif()
 
-target_link_libraries(capybara PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
+target_link_libraries(capybara PRIVATE 
+    Qt${QT_VERSION_MAJOR}::Widgets
+)
+
+# Link OpenCV if found
+if(HAVE_OPENCV)
+    if(OpenCV_LIBS)
+        target_link_libraries(capybara PRIVATE ${OpenCV_LIBS})
+    elseif(TARGET opencv_world)
+        target_link_libraries(capybara PRIVATE opencv_world)
+    elseif(TARGET opencv_core)
+        target_link_libraries(capybara PRIVATE 
+            opencv_core opencv_imgproc opencv_imgcodecs opencv_photo)
+    endif()
+    target_compile_definitions(capybara PRIVATE HAVE_OPENCV)
+    message(STATUS "OpenCV enabled - HAVE_OPENCV defined")
+else()
+    message(STATUS "OpenCV disabled - compiling without OpenCV support")
+endif()
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an
@@ -72,13 +176,12 @@ set_target_properties(capybara PROPERTIES
     WIN32_EXECUTABLE TRUE
 )
 
-# Set application icon / 設置應用程式圖標
+# Set application icon
 if(WIN32)
-    # Windows uses .rc file for icon / Windows 使用 .rc 文件設置圖標
+    # Windows uses .rc file for icon
     # The .rc file is already included in PROJECT_SOURCES if raw.ico exists
-    # .rc 文件已經在 raw.ico 存在時包含在 PROJECT_SOURCES 中
 elseif(APPLE)
-    # macOS uses .icns file / macOS 使用 .icns 文件
+    # macOS uses .icns file
     set_target_properties(capybara PROPERTIES
         MACOSX_BUNDLE_ICON_FILE "raw.png"
     )

@@ -5,6 +5,9 @@
 #include <QProcess>
 #include <QStringList>
 #include <QMap>
+#include "imageinfo.h"
+#include "imageprocessor.h"
+#include "processingpipeline.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -26,6 +29,14 @@ private slots:
     void onSelectEnvButtonClicked();
     void onRefreshButtonClicked();
     void scanPythonEnvironments();
+    
+    // 數據處理相關槽函數 / Data processing related slots
+    void onSelectDirectoryClicked();
+    void onImageListSelectionChanged();
+    void onSavePresetClicked();
+    void onLoadPresetClicked();
+    void onExportClicked();
+    void onParameterChanged();
 
 private:
     struct PythonEnvironment {
@@ -73,6 +84,21 @@ private:
     void loadSettings(); // 載入設定 / Load settings
     bool hasSavedSettings(); // 檢查是否有保存的設定 / Check if saved settings exist
     void applySavedSettings(); // 應用保存的設定 / Apply saved settings
+    
+    // 數據處理相關方法 / Data processing related methods
+    void setupDataProcessingTab();
+    void scanImageDirectory(const QString &dir);
+    void updateImageInfo(const QString &imagePath);
+    void updateDirectoryStats();
+    void updateImagePreview();
+    void setupOpenCVParameters();
+    void applyPreviewProcessing();
+    void exportImage(const QString &inputPath, const QString &outputPath);
+    void exportDirectory(const QString &outputDir);
+    
+    // OpenCV 檢查和安裝方法 / OpenCV check and installation methods
+    bool checkOpenCVInstalled();
+    void installOpenCV();
 
     Ui::MainWindow *ui;
     QList<PythonEnvironment> pythonEnvironments;
@@ -81,5 +107,14 @@ private:
     QString selectedEnvName; // 已指定的環境名稱 / Selected environment name
     QString selectedEnvPath; // 已指定的環境路徑 / Selected environment path
     QString selectedPythonPath; // 已指定的 Python 路徑 / Selected Python path
+    
+    // 數據處理相關變量 / Data processing related variables
+    ImageProcessor *imageProcessor;
+    ProcessingPipeline *processingPipeline;
+    QString currentDirectory;
+    QStringList imageFileList;
+    QString currentImagePath;
+    DirectoryStats directoryStats;
+    QMap<QString, QWidget*> parameterWidgets;  // 參數控件映射 / Parameter widgets map
 };
 #endif // MAINWINDOW_H / Header guard end

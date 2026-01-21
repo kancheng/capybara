@@ -104,6 +104,7 @@ Capybara is a comprehensive GUI tool designed for machine learning workflows, pr
 ### 依賴項 / Dependencies
 
 - **Qt 6.10.1** 或更高版本
+- **OpenCV**（可選，用於圖像處理功能）- 可使用 `.\install_opencv.ps1` 自動安裝
 - **PyTorch**（可選，用於模型訓練）
 - **Ultralytics**（可選，用於 YOLO 模型）
 - **CUDA**（可選，用於 GPU 加速）
@@ -122,19 +123,38 @@ Capybara is a comprehensive GUI tool designed for machine learning workflows, pr
    - 下載並安裝 [Qt 6.10.1](https://www.qt.io/download) 或更高版本
    - 確保 Qt Creator 或 CMake 已安裝
 
-3. **配置 CMake** / Configure CMake
+3. **安裝 OpenCV（可選，用於圖像處理功能）** / Install OpenCV (Optional, for image processing features)
+   
+   **自動安裝（推薦）** / Auto-install (Recommended):
+   ```powershell
+   .\install_opencv.ps1
+   ```
+   
+   或使用 vcpkg（如果已安裝）:
+   ```powershell
+   .\install_opencv_simple.ps1
+   ```
+   
+   詳細說明請參閱 [INSTALL_OPENCV.md](INSTALL_OPENCV.md)
+   
+   For detailed instructions, see [INSTALL_OPENCV.md](INSTALL_OPENCV.md)
+
+4. **配置 CMake** / Configure CMake
    ```bash
    mkdir build
    cd build
    cmake ..
    ```
+   
+   > **注意** / Note: 如果已安裝 OpenCV，CMake 會自動檢測。如果未安裝，圖像處理功能將被禁用。
+   > If OpenCV is installed, CMake will automatically detect it. If not installed, image processing features will be disabled.
 
-4. **編譯** / Build
+5. **編譯** / Build
    ```bash
    cmake --build .
    ```
 
-5. **運行** / Run
+6. **運行** / Run
    ```bash
    ./capybara.exe
    ```
@@ -224,6 +244,9 @@ capybara/
 ├── resources.qrc            # Qt 資源文件 / Qt resource file
 ├── capybara.rc              # Windows 資源文件 / Windows resource file
 ├── CMakeLists.txt           # CMake 構建配置 / CMake build configuration
+├── install_opencv.ps1      # OpenCV 自動安裝腳本 / OpenCV auto-install script
+├── install_opencv_simple.ps1 # OpenCV vcpkg 安裝腳本 / OpenCV vcpkg install script
+├── INSTALL_OPENCV.md        # OpenCV 安裝指南 / OpenCV installation guide
 ├── LICENSE                  # 許可證文件 / License file
 └── README.md               # 本文件 / This file
 ```
