@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>800</width>
-    <height>600</height>
+    <width>900</width>
+    <height>700</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -16,124 +16,387 @@
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout">
     <item>
-     <widget class="QLabel" name="label">
-      <property name="text">
-       <string>選擇 Python 環境：</string>
+     <widget class="QTabWidget" name="tabWidget">
+      <property name="currentIndex">
+       <number>0</number>
       </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QComboBox" name="pythonComboBox">
-      <property name="editable">
-       <bool>false</bool>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QLabel" name="pythonPathLabel">
-      <property name="text">
-       <string>路徑：未選擇</string>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QLabel" name="venvLabel">
-      <property name="text">
-       <string>選擇虛擬環境：</string>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QComboBox" name="venvComboBox">
-      <property name="editable">
-       <bool>false</bool>
-      </property>
-      <property name="enabled">
-       <bool>false</bool>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QLabel" name="venvPathLabel">
-      <property name="text">
-       <string>虛擬環境路徑：未選擇</string>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QPushButton" name="selectEnvButton">
-      <property name="text">
-       <string>指定此環境</string>
-      </property>
-      <property name="enabled">
-       <bool>false</bool>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QLabel" name="selectedEnvLabel">
-      <property name="text">
-       <string>已指定環境：無</string>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QLabel" name="systemInfoLabel">
-      <property name="text">
-       <string>系統信息：檢測中...</string>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QLabel" name="cudaInfoLabel">
-      <property name="text">
-       <string>CUDA：檢測中...</string>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QLabel" name="gpuInfoLabel">
-      <property name="text">
-       <string>GPU：檢測中...</string>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QFrame" name="line">
-      <property name="frameShape">
-       <enum>QFrame::HLine</enum>
-      </property>
-      <property name="frameShadow">
-       <enum>QFrame::Sunken</enum>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QLabel" name="pythonPackagesLabel">
-      <property name="text">
-       <string>Python 套件：未選擇環境</string>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QLabel" name="pytorchInfoLabel">
-      <property name="text">
-       <string>PyTorch：未檢測</string>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QLabel" name="ultralyticsInfoLabel">
-      <property name="text">
-       <string>Ultralytics：未檢測</string>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QPushButton" name="refreshButton">
-      <property name="text">
-       <string>重新掃描</string>
-      </property>
+      <!-- Tab 1: 環境設定 / Environment Setup -->
+      <widget class="QWidget" name="tabEnvironment">
+       <attribute name="title">
+        <string>1. 環境設定 / Environment Setup</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_2">
+        <item>
+         <widget class="QLabel" name="label">
+          <property name="text">
+           <string>選擇 Python 環境：</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="pythonComboBox">
+          <property name="editable">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="pythonPathLabel">
+          <property name="text">
+           <string>路徑：未選擇</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="venvLabel">
+          <property name="text">
+           <string>選擇虛擬環境：</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="venvComboBox">
+          <property name="editable">
+           <bool>false</bool>
+          </property>
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="venvPathLabel">
+          <property name="text">
+           <string>虛擬環境路徑：未選擇</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="selectEnvButton">
+          <property name="text">
+           <string>指定此環境</string>
+          </property>
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="selectedEnvLabel">
+          <property name="text">
+           <string>已指定環境：無</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="systemInfoLabel">
+          <property name="text">
+           <string>系統信息：檢測中...</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="cudaInfoLabel">
+          <property name="text">
+           <string>CUDA：檢測中...</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="gpuInfoLabel">
+          <property name="text">
+           <string>GPU：檢測中...</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QFrame" name="line">
+          <property name="frameShape">
+           <enum>QFrame::HLine</enum>
+          </property>
+          <property name="frameShadow">
+           <enum>QFrame::Sunken</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="pythonPackagesLabel">
+          <property name="text">
+           <string>Python 套件：未選擇環境</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="pytorchInfoLabel">
+          <property name="text">
+           <string>PyTorch：未檢測</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="ultralyticsInfoLabel">
+          <property name="text">
+           <string>Ultralytics：未檢測</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="refreshButton">
+          <property name="text">
+           <string>重新掃描</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="verticalSpacer">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+      <!-- Tab 2: 數據處理 / Data Processing -->
+      <widget class="QWidget" name="tabDataProcessing">
+       <attribute name="title">
+        <string>2. 數據處理 / Data Processing</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_3">
+        <item>
+         <widget class="QLabel" name="dataProcessingLabel">
+          <property name="text">
+           <string>數據處理模塊 / Data Processing Module</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+          <property name="styleSheet">
+           <string>font-size: 18px; font-weight: bold; color: #666;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="dataProcessingStatusLabel">
+          <property name="text">
+           <string>🚧 此功能正在開發中 / This feature is under development</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+          <property name="styleSheet">
+           <string>font-size: 14px; color: #999;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="verticalSpacer_2">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+      <!-- Tab 3: 數據標註 / Data Annotation -->
+      <widget class="QWidget" name="tabDataAnnotation">
+       <attribute name="title">
+        <string>3. 數據標註 / Data Annotation</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_4">
+        <item>
+         <widget class="QLabel" name="dataAnnotationLabel">
+          <property name="text">
+           <string>數據標註模塊 / Data Annotation Module</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+          <property name="styleSheet">
+           <string>font-size: 18px; font-weight: bold; color: #666;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="dataAnnotationStatusLabel">
+          <property name="text">
+           <string>🚧 此功能正在開發中 / This feature is under development</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+          <property name="styleSheet">
+           <string>font-size: 14px; color: #999;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="verticalSpacer_3">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+      <!-- Tab 4: 數據格式轉換 / Data Format Conversion -->
+      <widget class="QWidget" name="tabDataConversion">
+       <attribute name="title">
+        <string>4. 數據格式轉換 / Data Format Conversion</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_5">
+        <item>
+         <widget class="QLabel" name="dataConversionLabel">
+          <property name="text">
+           <string>數據格式轉換模塊 / Data Format Conversion Module</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+          <property name="styleSheet">
+           <string>font-size: 18px; font-weight: bold; color: #666;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="dataConversionStatusLabel">
+          <property name="text">
+           <string>🚧 此功能正在開發中 / This feature is under development</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+          <property name="styleSheet">
+           <string>font-size: 14px; color: #999;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="verticalSpacer_4">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+      <!-- Tab 5: 模型訓練 / Model Training -->
+      <widget class="QWidget" name="tabModelTraining">
+       <attribute name="title">
+        <string>5. 模型訓練 / Model Training</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_6">
+        <item>
+         <widget class="QLabel" name="modelTrainingLabel">
+          <property name="text">
+           <string>模型訓練模塊 / Model Training Module</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+          <property name="styleSheet">
+           <string>font-size: 18px; font-weight: bold; color: #666;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="modelTrainingStatusLabel">
+          <property name="text">
+           <string>🚧 此功能正在開發中 / This feature is under development</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+          <property name="styleSheet">
+           <string>font-size: 14px; color: #999;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="verticalSpacer_5">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+      <!-- Tab 6: 模型匯出 / Model Export -->
+      <widget class="QWidget" name="tabModelExport">
+       <attribute name="title">
+        <string>6. 模型匯出 / Model Export</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_7">
+        <item>
+         <widget class="QLabel" name="modelExportLabel">
+          <property name="text">
+           <string>模型匯出模塊 / Model Export Module</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+          <property name="styleSheet">
+           <string>font-size: 18px; font-weight: bold; color: #666;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="modelExportStatusLabel">
+          <property name="text">
+           <string>🚧 此功能正在開發中 / This feature is under development</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+          <property name="styleSheet">
+           <string>font-size: 14px; color: #999;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="verticalSpacer_6">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
      </widget>
     </item>
    </layout>
@@ -143,7 +406,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>800</width>
+     <width>900</width>
      <height>21</height>
     </rect>
    </property>
